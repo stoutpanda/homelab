@@ -38,5 +38,5 @@ graph TD
     class CoreSwitch,Flex25G,FlexMini,MikroTik switch
     class MS01Node1,MS01Node2 node
     class K8sCP01,K8sCP02,K8sCP03,AdminBox controlplane```mermaid
-'''s
+'''
 
