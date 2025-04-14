@@ -226,7 +226,6 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 - **RAM:** 8GB per unit
 - **Accessories:**
     - M2 SSD Hat Kit
-    - Official Case
     - Cooler
 - **Network Connection:** Connected to Ubiquiti Flex Mini
 - **Roles:**
@@ -287,23 +286,18 @@ Ubiquiti Flex 2.5G (10.0.1.80)
         - Main gateway and security appliance
         - Unified management interface
         - Connected to Unifi Enterprise 24 Port via DAC
-    2. **Unifi Enterprise 24 Port**
-        
-        - Core switching infrastructure
-        - High-performance capabilities
-        - Connected to Ubiquiti Flex 2.5G via SFP+
-    3. **MikroTik CRS309-1G-8S+**
+    2. **MikroTik CRS309-1G-8S+**
         
         - 8-port SFP+ switch
         - Dedicated to storage and Kubernetes traffic
         - VLAN configuration for traffic isolation
-    4. **Ubiquiti UniFi Flex Mini**
+    3. **Ubiquiti UniFi Flex Mini**
         
         - 5-port switch
         - Power over Ethernet (PoE) support
         - Connects Control Plane nodes
         - Compact form factor
-    5. **Ubiquiti Networks Flex 2.5G (USW-Flex-2.5G-8)**
+    4. **Ubiquiti Networks Flex 2.5G (USW-Flex-2.5G-8)**
         
         - 8-port managed switch
         - 2.5G Ethernet capabilities
