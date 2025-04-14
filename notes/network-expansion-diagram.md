@@ -36,6 +36,6 @@ graph TD
     class UDMPRO router
     class CoreSwitch,Flex25G,FlexMini,MikroTik switch
     class MS01Node1,MS01Node2 node
-    class K8sCP01,K8sCP02,K8sCP03,AdminBox controlplane```mermaid
+    class K8sCP01,K8sCP02,K8sCP03,AdminBox controlplane
 '''
 
