@@ -8,45 +8,45 @@ Internet
     ▼
 UDM-PRO (10.0.1.1)
     │ 
-    │ DAC → Port 1 (VLANs: 1,2,3,4,5,6,10,18,28,38,48,58)
+    │ DAC → Port 1 (VLANs: 1,2,3,4,5,6,10,16,18,28,38,48,58)
     ▼
 Unifi Enterprise 24 Port (10.0.1.238) - Core Switch
     │
-    │ SFP+ → Port 24 (VLANs: 1,18,28,38,48,58)
+    │ SFP+ → Port 24 (VLANs: 1,16,18,28,38,48,58)
     ▼
 Ubiquiti Flex 2.5G (10.0.1.80)
     │
-    ├───── Port 1: Uplink to Enterprise 24 Port (Trunk: All VLANs)
+    ├───── Port 1: Uplink to Enterprise 24 Port (Trunk: All VLANs, VLAN 1 native)
     │
-    ├───── Port 2-3: MS-01 Node 1 (10.0.1.90) 2.5G ports (VLANs: 1,18)
+    ├───── Port 2-3: MS-01 Node 1 (10.8.16.90) 2.5G ports (VLAN 16 native, VLAN 18 tagged)
     │
-    ├───── Port 4-5: MS-01 Node 2 (10.0.1.91) 2.5G ports (VLANs: 1,18)
+    ├───── Port 4-5: MS-01 Node 2 (10.8.16.91) 2.5G ports (VLAN 16 native, VLAN 18 tagged)
     │
-    ├───── Port 6: Connection to Flex Mini (VLANs: 1,18)
+    ├───── Port 6: Connection to Flex Mini (VLAN 16 native, VLAN 18 tagged)
     │      │
     │      ▼
     │     Ubiquiti Flex Mini (10.0.1.81)
     │       │
-    │       ├── Port 1: Uplink to Flex 2.5G (VLANs: 1,18)
+    │       ├── Port 1: Uplink to Flex 2.5G (VLAN 16 native, VLAN 18 tagged)
     │       │
-    │       ├── Port 2: K8s-CP-01 (10.0.1.86) (VLANs: 1,18)
+    │       ├── Port 2: K8s-CP-01 (10.8.16.86) (VLAN 16 native, VLAN 18 tagged)
     │       │
-    │       ├── Port 3: K8s-CP-02 (10.0.1.87) (VLANs: 1,18)
+    │       ├── Port 3: K8s-CP-02 (10.8.16.87) (VLAN 16 native, VLAN 18 tagged)
     │       │
-    │       └── Port 4: K8s-CP-03 (10.0.1.88) (VLANs: 1,18)
+    │       └── Port 4: K8s-CP-03 (10.8.16.88) (VLAN 16 native, VLAN 18 tagged)
     │
-    ├───── Port 7: MikroTik CRS309 Management (VLAN: 1 only)
+    ├───── Port 7: MikroTik CRS309 Management (VLAN 1 only)
     │      │
     │      ▼
     │     MikroTik CRS309-1G-8S+ (10.0.1.82)
     │       │
-    │       ├── Port 1: Management to Flex 2.5G (VLAN: 1 only)
+    │       ├── Port 1: Management to Flex 2.5G (VLAN 1 only)
     │       │
     │       ├── Port 2-3: MS-01 Node 1 SFP+ (VLANs: 28,38,48)
     │       │
     │       └── Port 4-5: MS-01 Node 2 SFP+ (VLANs: 28,38,48)
     │
-    └───── Port 8: Admin Box (10.0.1.85) (VLANs: 1,18)
+    └───── Port 8: Admin Box (10.8.16.85) (VLAN 16 native, VLAN 18 tagged)
 ```
 
 ## VLAN Structure
@@ -68,11 +68,12 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 
 |VLAN ID|Purpose|Subnet|Gateway|Notes|
 |---|---|---|---|---|
-|18|Kubernetes Control Plane|10.8.18.0/24|10.8.18.1|For API server, etcd, scheduler|
-|28|Kubernetes Pod Network|10.8.28.0/22|10.8.28.1|Larger subnet for pod IPs|
-|38|Kubernetes Service Network|10.8.38.0/24|10.8.38.1|For Kubernetes service IPs|
-|48|Storage Network|10.8.48.0/24|10.8.48.1|Dedicated for Ceph traffic|
-|58|Load Balancer IPs|10.8.58.0/24|10.8.58.1|For external service access|
+|16|Kubernetes Management|10.8.16.0/27|10.8.16.1|Native VLAN for K8s components|
+|18|Kubernetes Control Plane|10.8.18.0/27|10.8.18.1|For API server, etcd, scheduler|
+|28|Kubernetes Pod Network|10.8.28.0/23|10.8.28.1|512 IPs for pod allocation|
+|38|Kubernetes Service Network|10.8.38.0/26|10.8.38.1|64 IPs for Kubernetes services|
+|48|Storage Network|10.8.48.0/27|10.8.48.1|Dedicated for Ceph traffic|
+|58|Load Balancer IPs|10.8.58.0/27|10.8.58.1|32 IPs for external service access|
 
 ## Existing Network Devices
 
@@ -97,16 +98,14 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 |**K8s Control Plane**|Raspberry Pi 5|3|8GB RAM|- M2 SSD Hat Kit - Official Case - Cooler|
 |**Cluster Nodes**|Minisforum MS-01|2|High-Performance Compute Nodes||
 
-## Rack Infrastructure
+## New Rack Infrastructure
 
-|Component|Model|Specifications|Ports|Features|
-|---|---|---|---|---|
-|**Rack**|GeekPi 12U 10″ Mini Rack|Compact Networking Rack|-|12U Height|
-|**Router/Gateway**|UDM-PRO|Unified Dream Machine Pro|Multiple|Security Gateway & Network Controller|
-|**Core Switch**|Unifi Enterprise 24 Port|Enterprise Network Switch|24 Ports + SFP+|High-Performance Routing|
-|**PoE Switch**|Ubiquiti UniFi Flex Mini|Compact 5-Port Switch|5 Ports|PoE Capabilities|
-|**Managed Switch**|Ubiquiti Networks Flex 2.5G|Enterprise Managed Switch|8 Ports|2.5G Ethernet|
-|**Storage Network**|MikroTik CRS309-1G-8S+|SFP+ Switch|8 × SFP+|High-Performance Storage Network|
+| Component           | Model                       | Specifications            | Ports    | Features                         |
+| ------------------- | --------------------------- | ------------------------- | -------- | -------------------------------- |
+| **Rack**            | GeekPi 12U 10″ Mini Rack    | Compact Networking Rack   | -        | 12U Height                       |
+| **PoE Switch**      | Ubiquiti UniFi Flex Mini    | Compact 5-Port Switch     | 5 Ports  | PoE Capabilities                 |
+| **Managed Switch**  | Ubiquiti Networks Flex 2.5G | Enterprise Managed Switch | 8 Ports  | 2.5G Ethernet                    |
+| **Storage Network** | MikroTik CRS309-1G-8S+      | SFP+ Switch               | 8 × SFP+ | High-Performance Storage Network |
 
 ## Network Configuration
 
@@ -114,91 +113,87 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 
 |Device|Interface|VLAN|IP Address|Purpose|
 |---|---|---|---|---|
-|Flex 2.5G|Management|1|10.0.1.80/24|Management|
-|Flex 2.5G|K8s Control Plane|18|10.8.18.80/24|K8s Management|
-|Flex Mini|Management|1|10.0.1.81/24|Management|
-|Flex Mini|K8s Control Plane|18|10.8.18.81/24|K8s Management|
-|MikroTik CRS309|Management|1|10.0.1.82/24|Management|
-|MikroTik CRS309|K8s Pod Network|28|10.8.28.82/22|Pod Traffic|
-|MikroTik CRS309|K8s Service Network|38|10.8.38.82/24|Service Traffic|
-|MikroTik CRS309|Storage Network|48|10.8.48.82/24|Storage Traffic|
+|Flex 2.5G|Management|1|10.0.1.80/24|Switch Management|
+|Flex Mini|Management|1|10.0.1.81/24|Switch Management|
+|MikroTik CRS309|Management|1|10.0.1.82/24|Switch Management|
 
-### Node IP Allocation
+###Node IP Allocation
 
-#### Admin Box (Raspberry Pi 5)
+####Admin Box (Raspberry Pi 5)
 
 |Interface|VLAN|IP Address|Purpose|
 |---|---|---|---|
-|eth0|1|10.0.1.85/24|Management|
-|eth0.18|18|10.8.18.85/24|K8s Control Plane access|
+|eth0|16 (Native)|10.8.16.85/27|K8s Management|
+|eth0.18|18 (Tagged)|10.8.18.85/27|K8s Control Plane access|
 
-#### Control Plane Nodes (Raspberry Pi 5, 3 units)
-
-|Node|Interface|VLAN|IP Address|Purpose|
-|---|---|---|---|---|
-|K8s-CP-01|eth0|1|10.0.1.86/24|Management|
-|K8s-CP-01|eth0.18|18|10.8.18.86/24|K8s Control Plane|
-|K8s-CP-02|eth0|1|10.0.1.87/24|Management|
-|K8s-CP-02|eth0.18|18|10.8.18.87/24|K8s Control Plane|
-|K8s-CP-03|eth0|1|10.0.1.88/24|Management|
-|K8s-CP-03|eth0.18|18|10.8.18.88/24|K8s Control Plane|
-
-#### MS-01 Cluster Nodes (2 units)
+####Control Plane Nodes (Raspberry Pi 5, 3 units)
 
 |Node|Interface|VLAN|IP Address|Purpose|
 |---|---|---|---|---|
-|MS-01-1|eth0|1|10.0.1.90/24|Management|
-|MS-01-1|eth0.18|18|10.8.18.90/24|K8s Control Plane access|
-|MS-01-1|sfp0|28|10.8.28.90/22|Pod Network|
-|MS-01-1|sfp0.38|38|10.8.38.90/24|Service Network|
-|MS-01-1|sfp1|48|10.8.48.90/24|Storage Network|
-|MS-01-2|eth1|1|10.0.1.91/24|Management|
-|MS-01-2|eth1.18|18|10.8.18.91/24|K8s Control Plane access|
-|MS-01-2|sfp0|28|10.8.28.91/22|Pod Network|
-|MS-01-2|sfp0.38|38|10.8.38.91/24|Service Network|
-|MS-01-2|sfp1|48|10.8.48.91/24|Storage Network|
+|K8s-CP-01|eth0|16 (Native)|10.8.16.86/27|K8s Management|
+|K8s-CP-01|eth0.18|18 (Tagged)|10.8.18.86/27|K8s Control Plane|
+|K8s-CP-02|eth0|16 (Native)|10.8.16.87/27|K8s Management|
+|K8s-CP-02|eth0.18|18 (Tagged)|10.8.18.87/27|K8s Control Plane|
+|K8s-CP-03|eth0|16 (Native)|10.8.16.88/27|K8s Management|
+|K8s-CP-03|eth0.18|18 (Tagged)|10.8.18.88/27|K8s Control Plane|
 
-### Virtual IP for HA Control Plane
+####MS-01 Cluster Nodes (2 units)
+
+|Node|Interface|VLAN|IP Address|Purpose|
+|---|---|---|---|---|
+|MS-01-1|eth0|16 (Native)|10.8.16.90/27|K8s Management|
+|MS-01-1|eth0.18|18 (Tagged)|10.8.18.90/27|K8s Control Plane access|
+|MS-01-1|sfp0|28 (Tagged)|10.8.28.90/23|Pod Network|
+|MS-01-1|sfp0.38|38 (Tagged)|10.8.38.90/26|Service Network|
+|MS-01-1|sfp1|48 (Tagged)|10.8.48.90/27|Storage Network|
+|MS-01-2|eth0|16 (Native)|10.8.16.91/27|K8s Management|
+|MS-01-2|eth0.18|18 (Tagged)|10.8.18.91/27|K8s Control Plane access|
+|MS-01-2|sfp0|28 (Tagged)|10.8.28.91/23|Pod Network|
+|MS-01-2|sfp0.38|38 (Tagged)|10.8.38.91/26|Service Network|
+|MS-01-2|sfp1|48 (Tagged)|10.8.48.91/27|Storage Network|
+
+###Virtual IP for HA Control Plane
 
 |Service|VLAN|IP Address|Purpose|
 |---|---|---|---|
-|K8s API Server VIP|18|10.8.18.1/24|HA endpoint for K8s API|
+|K8s API Server VIP|18|10.8.18.1/27|HA endpoint for K8s API|
 
-### Port Configuration
+###Port Configuration
 
-#### UDM-PRO (existing at 10.0.1.1)
+####UDM-PRO (existing at 10.0.1.1)
 
-- All K8s VLANs (18, 28, 38, 48, 58) trunked to Enterprise 24 Port switch
+- All K8s VLANs (16, 18, 28, 38, 48, 58) trunked to Enterprise 24 Port switch
 - Inter-VLAN routing enabled for necessary communication
+- Configure routing between VLAN 1 and VLAN 16 for management access
 
-#### Enterprise 24 Port - Main (existing at 10.0.1.238)
+####Enterprise 24 Port - Main (existing at 10.0.1.238)
 
 - All K8s VLANs trunked to Ubiquiti Flex 2.5G
 - Default VLAN (1) as native VLAN
 
-#### Ubiquiti Flex 2.5G (new)
+####Ubiquiti Flex 2.5G (new)
 
-- Port 1: Uplink to Enterprise 24 Port (trunk all VLANs)
-- Ports 2-3: MS-01 Node 1 2.5G ports (tagged VLANs 1, 18)
-- Ports 4-5: MS-01 Node 2 2.5G ports (tagged VLANs 1, 18)
-- Port 6: Connection to Flex Mini (tagged VLANs 1, 18)
-- Port 7: Connection to MikroTik CRS309 (management only - VLAN 1)
-- Port 8: Admin Box (tagged VLANs 1, 18)
+- Port 1: Uplink to Enterprise 24 Port (trunk all VLANs, VLAN 1 as native)
+- Ports 2-3: MS-01 Node 1 2.5G ports (VLAN 16 as native, VLAN 18 tagged)
+- Ports 4-5: MS-01 Node 2 2.5G ports (VLAN 16 as native, VLAN 18 tagged)
+- Port 6: Connection to Flex Mini (VLAN 16 as native, VLAN 18 tagged)
+- Port 7: Connection to MikroTik CRS309 (VLAN 1 as native - for switch management)
+- Port 8: Admin Box (VLAN 16 as native, VLAN 18 tagged)
 
-#### Ubiquiti Flex Mini (new)
+####Ubiquiti Flex Mini (new)
 
-- Port 1: Uplink to Flex 2.5G (tagged VLANs 1, 18)
-- Ports 2-4: K8s Control Plane Nodes (tagged VLANs 1, 18)
+- Port 1: Uplink to Flex 2.5G (VLAN 16 as native, VLAN 18 tagged)
+- Ports 2-4: K8s Control Plane Nodes (VLAN 16 as native, VLAN 18 tagged)
 - Port 5: Spare
 
-#### MikroTik CRS309-1G-8S+ (new)
+### MikroTik CRS309-1G-8S+ (new)
 
 - Port 1: Management port to Flex 2.5G (VLAN 1 only)
 - Ports 2-3: MS-01 Node 1 SFP+ (tagged VLANs 28, 38, 48)
 - Ports 4-5: MS-01 Node 2 SFP+ (tagged VLANs 28, 38, 48)
 - Ports 6-8: Reserved for future expansion
 
-### Initial Network Services
+###Initial Network Services
 
 - **DNS:** CoreDNS (running in Kubernetes)
 - **DHCP:** Managed by UDM-PRO
@@ -206,7 +201,7 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 
 ## Detailed Node Specifications
 
-### Admin Box
+###Admin Box
 
 - **Model:** Raspberry Pi 5
 - **RAM:** 16GB
@@ -219,13 +214,14 @@ Ubiquiti Flex 2.5G (10.0.1.80)
     - Monitoring dashboard
     - Backup controller
 
-### Kubernetes Control Plane (K8s-CP)
+###Kubernetes Control Plane (K8s-CP)
 
 - **Model:** Raspberry Pi 5
 - **Quantity:** 3 Units (K8s-CP-01, K8s-CP-02, K8s-CP-03)
 - **RAM:** 8GB per unit
 - **Accessories:**
     - M2 SSD Hat Kit
+    - Official Case
     - Cooler
 - **Network Connection:** Connected to Ubiquiti Flex Mini
 - **Roles:**
@@ -233,7 +229,7 @@ Ubiquiti Flex 2.5G (10.0.1.80)
     - etcd cluster
     - Scheduler and controller manager
 
-### MS-01 Cluster Nodes (Detailed Specifications)
+###MS-01 Cluster Nodes (Detailed Specifications)
 
 - **Hardware Platform:** Minisforum MS-01 Computer
     
@@ -286,18 +282,23 @@ Ubiquiti Flex 2.5G (10.0.1.80)
         - Main gateway and security appliance
         - Unified management interface
         - Connected to Unifi Enterprise 24 Port via DAC
-    2. **MikroTik CRS309-1G-8S+**
+    2. **Unifi Enterprise 24 Port**
+        
+        - Core switching infrastructure
+        - High-performance capabilities
+        - Connected to Ubiquiti Flex 2.5G via SFP+
+    3. **MikroTik CRS309-1G-8S+**
         
         - 8-port SFP+ switch
         - Dedicated to storage and Kubernetes traffic
         - VLAN configuration for traffic isolation
-    3. **Ubiquiti UniFi Flex Mini**
+    4. **Ubiquiti UniFi Flex Mini**
         
         - 5-port switch
         - Power over Ethernet (PoE) support
         - Connects Control Plane nodes
         - Compact form factor
-    4. **Ubiquiti Networks Flex 2.5G (USW-Flex-2.5G-8)**
+    5. **Ubiquiti Networks Flex 2.5G (USW-Flex-2.5G-8)**
         
         - 8-port managed switch
         - 2.5G Ethernet capabilities
@@ -317,10 +318,6 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 - 4TB raw storage capacity per node (2x 2TB NVMe)
 - Kubernetes CSI driver for dynamic provisioning
 - Dedicated storage network on VLAN 48
-
-## Operating System Debates
-- Ubuntu vs TalosOS
-- running proxmox on ms-01 models vs baremetal
 
 ## Security Considerations
 
@@ -344,10 +341,3 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 - Velero for Kubernetes resource backups
 - Ceph snapshots for persistent volume backups
 - Off-cluster backup storage
-
-## Resource Allocation
-
-- Node taints for workload placement control
-- Resource quotas for namespaces
-- Pod resource requests and limits
-- Quality of Service (QoS) classes
