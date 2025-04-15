@@ -95,7 +95,7 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 |Component|Model|Quantity|Specifications|Additional Equipment|
 |---|---|---|---|---|
 |**Admin Box**|Raspberry Pi 5|1|16GB RAM|- M2 SSD Hat Kit - Official Case - Cooler|
-|**K8s Control Plane**|Raspberry Pi 5|3|8GB RAM|- M2 SSD Hat Kit - Official Case - Cooler|
+|**K8s Control Plane**|Raspberry Pi 5|3|8GB RAM|- M2 SSD Hat Kit - Cooler|
 |**Cluster Nodes**|Minisforum MS-01|2|High-Performance Compute Nodes||
 
 ## New Rack Infrastructure
@@ -317,14 +317,6 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 - 4TB raw storage capacity per node (2x 2TB NVMe)
 - Kubernetes CSI driver for dynamic provisioning
 - Dedicated storage network on VLAN 48
-
-## Security Considerations
-
-- Network segmentation via VLANs
-- Firewall rules between segments
-- Kubernetes network policies for pod isolation
-- TLS for all control plane communication
-- Certificate management with cert-manager
 
 ## Monitoring & Alerting
 
