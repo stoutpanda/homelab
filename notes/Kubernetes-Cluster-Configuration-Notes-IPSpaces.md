@@ -222,7 +222,6 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 - **Accessories:**
     - M2 SSD Hat Kit
     - Official Case
-    - Cooler
 - **Network Connection:** Connected to Ubiquiti Flex Mini
 - **Roles:**
     - Kubernetes API server (HA configuration)
