@@ -1,0 +1,5 @@
+Use ansible vault for secrets. No passwords should be stored in plain text. 
+Once we make a change to our project, we should update documentation and notate it in our tracking.md as well.
+We should then review .gitignore and make sure it is up today.  
+When working with Python in this project, we will use uv for package managment and virtual environments, and focus on it for any python parts it can handle. Do not use pip or venv. 
+Explain the solution in detail 2. Provide concrete evidence of feasibility 3. Identify potential limitations 4. Suggest alternative approaches 5. Explain how we can quickly validate this approach

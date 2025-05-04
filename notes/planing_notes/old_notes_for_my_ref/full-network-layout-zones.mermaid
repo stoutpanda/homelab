@@ -1,0 +1,78 @@
+graph TD
+    %% Main network hierarchy
+    Internet[Internet] --> UDMPRO[UDM-PRO\n10.0.1.1]
+    
+    %% Zone subgraphs
+    subgraph Zone1["Zone 1: Core Infrastructure"]
+        UDMPRO --- Enterprise24["Unifi Enterprise 24 Port\n10.0.1.238"]
+        Enterprise24 --- MGMT["Management Network\nVLAN 1 (10.0.1.0/24)"]
+    end
+    
+    subgraph Zone2["Zone 2: User/IoT Networks"]
+        Enterprise24 --- Family["Family Devices\nVLAN 3 (10.0.3.0/24)"]
+        Enterprise24 --- IoT["IoT Devices\nVLAN 2 (10.0.2.0/24)"]
+        Enterprise24 --- Work["Work Devices\nVLAN 4 (10.0.4.0/24)"]
+        
+        %% Access points
+        Enterprise24 --- U6EnterpriseLiving["U6-Enterprise-LivingArea\n10.0.1.207"]
+        Enterprise24 --- U6EnterpriseUpstairs["U6-Enterprise-IW-Upstairs\n10.0.1.227"]
+        Enterprise24 --- U6LiteGame["U6-Lite-Game\n10.0.1.242"]
+        
+        %% Specialized switches
+        Enterprise24 --- USWFlexPrinter["USW-Flex-Printer\n10.0.1.204"]
+        Enterprise24 --- USWFlexMedia["USW-Flex-Media\n10.0.1.208"]
+        Enterprise24 --- USWFlexSimRoom["USW-Flex-SimRoom\n10.0.1.212"]
+    end
+    
+    subgraph Zone3["Zone 3: Service Networks"]
+        Enterprise24 --- PublicServices["Public Services\nVLAN 10 (10.10.10.0/24)"]
+        Enterprise24 --- ReverseProxy["Reverse Proxy\nVLAN 6 (10.6.6.0/24)"]
+        Enterprise24 --- SecurityCameras["Security Cameras\nVLAN 5 (10.0.5.0/24)"]
+        Enterprise24 --- UNVRSerenity["UNVR-Serenity\n10.0.5.250"]
+        Enterprise24 --- USWEnterprise8Server["USW-Enterprise-8-PoE-Server\n10.0.1.239"]
+    end
+    
+    subgraph Zone4["Zone 4: Kubernetes Infrastructure"]
+        Enterprise24 --- UbiquitiFlex25G["Ubiquiti Flex 2.5G\n10.0.1.80"]
+        
+        UbiquitiFlex25G --- K8Management["K8s Management\nVLAN 16 (10.8.16.0/27)"]
+        UbiquitiFlex25G --- K8ControlPlane["K8s Control Plane\nVLAN 18 (10.8.18.0/27)"]
+        
+        %% Control Plane nodes
+        UbiquitiFlex25G --- UbiquitiFlexMini["Ubiquiti Flex Mini\n10.0.1.81"]
+        UbiquitiFlexMini --- K8sCP01["K8s-CP-01\n10.8.16.86"]
+        UbiquitiFlexMini --- K8sCP02["K8s-CP-02\n10.8.16.87"]
+        UbiquitiFlexMini --- K8sCP03["K8s-CP-03\n10.8.16.88"]
+        
+        %% Worker nodes
+        UbiquitiFlex25G --- MS01Node1["MS-01 Node 1\n10.8.16.90"]
+        UbiquitiFlex25G --- MS01Node2["MS-01 Node 2\n10.8.16.91"]
+        
+        %% Storage network
+        UbiquitiFlex25G --- MikroTikCRS309["MikroTik CRS309\n10.0.1.82"]
+        MikroTikCRS309 --- K8PodNetwork["Pod Network\nVLAN 28 (10.8.28.0/23)"]
+        MikroTikCRS309 --- K8ServiceNetwork["Service Network\nVLAN 38 (10.8.38.0/26)"] 
+        MikroTikCRS309 --- StorageNetwork["Storage Network\nVLAN 48 (10.8.48.0/27)"]
+        MikroTikCRS309 --- LoadBalancerNetwork["Load Balancer\nVLAN 58 (10.8.58.0/27)"]
+        
+        %% Admin interface
+        UbiquitiFlex25G --- AdminBox["Admin Box\n10.8.16.85"]
+    end
+    
+    %% Device-type styling
+    classDef router fill:#f96,stroke:#333,stroke-width:2px
+    classDef switch fill:#69b,stroke:#333,stroke-width:2px
+    classDef ap fill:#9d6,stroke:#333,stroke-width:2px
+    classDef storage fill:#d69,stroke:#333,stroke-width:2px
+    classDef client fill:#ddd,stroke:#333,stroke-width:1px
+    classDef vlan fill:#e8f4f8,stroke:#333,stroke-width:1px
+    classDef zone fill:#f5f5f5,stroke:#333,stroke-width:2px
+    
+    %% Apply classes
+    class UDMPRO router
+    class Enterprise24,UbiquitiFlex25G,UbiquitiFlexMini,MikroTikCRS309,USWFlexPrinter,USWFlexMedia,USWFlexSimRoom,USWEnterprise8Server switch
+    class U6EnterpriseLiving,U6EnterpriseUpstairs,U6LiteGame ap
+    class UNVRSerenity storage
+    class MS01Node1,MS01Node2,K8sCP01,K8sCP02,K8sCP03,AdminBox client
+    class MGMT,Family,IoT,Work,PublicServices,ReverseProxy,SecurityCameras,K8Management,K8ControlPlane,K8PodNetwork,K8ServiceNetwork,StorageNetwork,LoadBalancerNetwork vlan
+    class Zone1,Zone2,Zone3,Zone4 zone

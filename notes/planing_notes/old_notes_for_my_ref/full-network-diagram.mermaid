@@ -1,0 +1,46 @@
+graph TD
+    Internet[Internet] --> UDMPRO[UDM-PRO\n10.0.1.1]
+    UDMPRO --> Enterprise24["Unifi Enterprise 24 Port\n10.0.1.238"]
+    
+    %% Main network branches
+    Enterprise24 --> USWFlexPrinter["USW-Flex-Printer\n10.0.1.204"]
+    Enterprise24 --> USWFlexMedia["USW-Flex-Media\n10.0.1.208"]
+    Enterprise24 --> USWFlexSimRoom["USW-Flex-SimRoom\n10.0.1.212"]
+    Enterprise24 --> U6EnterpriseLiving["U6-Enterprise-LivingArea\n10.0.1.207"]
+    Enterprise24 --> U6EnterpriseUpstairs["U6-Enterprise-IW-Upstairs-Living\n10.0.1.227"]
+    Enterprise24 --> U6LiteGame["U6-Lite-Game\n10.0.1.242"]
+    Enterprise24 --> USWEnterprise8Server["USW-Enterprise-8-PoE-Server\n10.0.1.239"]
+    Enterprise24 --> UNVRSerenity["UNVR-Serenity\n10.0.5.250"]
+    
+    %% Kubernetes infrastructure branch
+    Enterprise24 --> UbiquitiFlex25G["Ubiquiti Flex 2.5G\n10.0.1.80"]
+    
+    %% Kubernetes infrastructure details
+    UbiquitiFlex25G --> MS01Node1["MS-01 Node 1\n10.8.16.90"]
+    UbiquitiFlex25G --> MS01Node2["MS-01 Node 2\n10.8.16.91"]
+    UbiquitiFlex25G --> UbiquitiFlexMini["Ubiquiti Flex Mini\n10.0.1.81"]
+    UbiquitiFlex25G --> MikroTikCRS309["MikroTik CRS309-1G-8S+\n10.0.1.82"]
+    UbiquitiFlex25G --> AdminBox["Admin Box\n10.8.16.85"]
+    
+    %% Control plane nodes
+    UbiquitiFlexMini --> K8sCP01["K8s-CP-01\n10.8.16.86"]
+    UbiquitiFlexMini --> K8sCP02["K8s-CP-02\n10.8.16.87"]
+    UbiquitiFlexMini --> K8sCP03["K8s-CP-03\n10.8.16.88"]
+    
+    %% MikroTik connections
+    MikroTikCRS309 --> MS01Node1SFP["MS-01 Node 1 SFP+\nVLANs: 28,38,48"]
+    MikroTikCRS309 --> MS01Node2SFP["MS-01 Node 2 SFP+\nVLANs: 28,38,48"]
+    
+    %% Device-type styling
+    classDef router fill:#f96,stroke:#333,stroke-width:2px
+    classDef switch fill:#69b,stroke:#333,stroke-width:2px
+    classDef ap fill:#9d6,stroke:#333,stroke-width:2px
+    classDef storage fill:#d69,stroke:#333,stroke-width:2px
+    classDef client fill:#ddd,stroke:#333,stroke-width:1px
+    
+    %% Apply classes
+    class UDMPRO router
+    class Enterprise24,UbiquitiFlex25G,UbiquitiFlexMini,MikroTikCRS309,USWFlexPrinter,USWFlexMedia,USWFlexSimRoom,USWEnterprise8Server switch
+    class U6EnterpriseLiving,U6EnterpriseUpstairs,U6LiteGame ap
+    class UNVRSerenity storage
+    class MS01Node1,MS01Node2,K8sCP01,K8sCP02,K8sCP03,AdminBox,MS01Node1SFP,MS01Node2SFP client

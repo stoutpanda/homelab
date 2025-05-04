@@ -1,0 +1,31 @@
+---
+- name: Restore SSH Key from Vault
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Include SSH keys from vault
+      include_vars:
+        file: "{{ playbook_dir | dirname | dirname }}/vault/keys/ssh_keys.yml"
+        
+    - name: Ensure .ssh directory exists
+      file:
+        path: "~/.ssh"
+        state: directory
+        mode: '0700'
+        
+    - name: Write private key to file
+      copy:
+        content: "{{ ssh_keys.k8s_ansible.private_key }}"
+        dest: "~/.ssh/k8s_ansible_key"
+        mode: '0600'
+        
+    - name: Write public key to file
+      copy:
+        content: "{{ ssh_keys.k8s_ansible.public_key }}"
+        dest: "~/.ssh/k8s_ansible_key.pub"
+        mode: '0644'
+        
+    - name: Show success message
+      debug:
+        msg: "SSH key has been successfully restored from vault"

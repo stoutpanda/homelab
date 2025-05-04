@@ -1,0 +1,23 @@
+---
+- name: Verify k8sadmin User Setup
+  hosts: all
+  gather_facts: false
+  
+  tasks:
+    - name: Get current user
+      command: whoami
+      register: current_user
+      changed_when: false
+      
+    - name: Show current user
+      debug:
+        msg: "Connected to {{ inventory_hostname }} as {{ current_user.stdout }}"
+        
+    - name: Test sudo access
+      command: sudo -n whoami
+      register: sudo_result
+      changed_when: false
+      
+    - name: Show sudo result
+      debug:
+        msg: "Sudo access works: {{ sudo_result.stdout == 'root' }}"

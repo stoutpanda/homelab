@@ -1,0 +1,9 @@
+# UV Configuration File
+[install]
+upgrade = true
+native-tls = true
+
+[venv]
+enable = true
+prompt = "homelab"}}
+]

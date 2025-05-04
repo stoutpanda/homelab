@@ -1,0 +1,76 @@
+# MikroTik CRS309 Bond Configuration Script (Starting with sfp-sfpplus1)
+
+# Step 1: Create a safety scheduler that will restore the original configuration if we lose access
+/system scheduler
+add name="restore-original-config" interval=5m on-event={
+    /interface bridge port
+    add bridge=bridge interface=sfp-sfpplus1
+    add bridge=bridge interface=sfp-sfpplus2
+    add bridge=bridge interface=sfp-sfpplus3
+    add bridge=bridge interface=sfp-sfpplus4
+} start-time=00:00:00 one-time=yes
+
+# Step 2: Create bond interfaces first (before removing ports from bridge)
+/interface bonding
+add name=bond1-node1 mode=802.3ad transmit-hash-policy=layer2+3 link-monitoring=mii mii-interval=100ms min-links=1 lacp-rate=30s
+add name=bond2-node2 mode=802.3ad transmit-hash-policy=layer2+3 link-monitoring=mii mii-interval=100ms min-links=1 lacp-rate=30s
+
+# Step 3: Now safely remove SFP+ ports from bridge for Node 1
+:foreach port in={sfp-sfpplus1;sfp-sfpplus2} do={
+    /interface bridge port remove [find where interface=$port]
+}
+
+# Step 4: Add SFP+ ports to bond for Node 1
+/interface bonding set bond1-node1 slaves=sfp-sfpplus1,sfp-sfpplus2
+
+# Step 5: Create VLANs for Node 1 bond
+/interface vlan
+add interface=bond1-node1 name=vlan28-pod-node1 vlan-id=28
+add interface=bond1-node1 name=vlan38-service-node1 vlan-id=38 
+add interface=bond1-node1 name=vlan48-storage-node1 vlan-id=48
+
+# Step 6: Only continue if we still have connectivity (wait 30 seconds)
+:delay 30s
+
+# Step 7: Now handle Node 2 ports if previous steps completed successfully
+:foreach port in={sfp-sfpplus3;sfp-sfpplus4} do={
+    /interface bridge port remove [find where interface=$port]
+}
+
+# Step 8: Add SFP+ ports to bond for Node 2
+/interface bonding set bond2-node2 slaves=sfp-sfpplus3,sfp-sfpplus4
+
+# Step 9: Create VLANs for Node 2 bond
+/interface vlan
+add interface=bond2-node2 name=vlan28-pod-node2 vlan-id=28
+add interface=bond2-node2 name=vlan38-service-node2 vlan-id=38
+add interface=bond2-node2 name=vlan48-storage-node2 vlan-id=48
+
+# Step 10: Create network bridges for each VLAN type
+/interface bridge
+add name=bridge-pod protocol-mode=none
+add name=bridge-service protocol-mode=none
+add name=bridge-storage protocol-mode=none
+
+# Step 11: Add VLAN interfaces to bridges
+/interface bridge port
+add bridge=bridge-pod interface=vlan28-pod-node1
+add bridge=bridge-pod interface=vlan28-pod-node2
+add bridge=bridge-service interface=vlan38-service-node1
+add bridge=bridge-service interface=vlan38-service-node2
+add bridge=bridge-storage interface=vlan48-storage-node1
+add bridge=bridge-storage interface=vlan48-storage-node2
+
+# Step 12: Set MTU for storage interfaces
+/interface ethernet
+set sfp-sfpplus1,sfp-sfpplus2,sfp-sfpplus3,sfp-sfpplus4 mtu=9000
+/interface bonding
+set bond1-node1,bond2-node2 mtu=9000
+/interface vlan
+set vlan48-storage-node1,vlan48-storage-node2 mtu=9000
+/interface bridge
+set bridge-storage mtu=9000
+
+# Step 13: If everything works, remove the safety scheduler
+:delay 2m
+/system scheduler remove restore-original-config

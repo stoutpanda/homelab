@@ -1,0 +1,47 @@
+---
+- name: Create k8sadmin User on All Nodes Using Vault Key
+  hosts: all
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Include SSH keys from vault
+      include_vars:
+        file: "{{ playbook_dir | dirname | dirname }}/vault/keys/ssh_keys.yml"
+      delegate_to: localhost
+      run_once: true
+      
+    - name: Create k8sadmin user
+      user:
+        name: k8sadmin
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+        create_home: yes
+        
+    - name: Create .ssh directory for k8sadmin
+      file:
+        path: /home/k8sadmin/.ssh
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+        
+    - name: Deploy SSH key for k8sadmin
+      authorized_key:
+        user: k8sadmin
+        key: "{{ ssh_keys.k8s_ansible.public_key }}"
+        state: present
+        
+    - name: Allow passwordless sudo for k8sadmin
+      copy:
+        content: "k8sadmin ALL=(ALL) NOPASSWD:ALL"
+        dest: /etc/sudoers.d/k8sadmin
+        owner: root
+        group: root
+        mode: '0440'
+        validate: 'visudo -cf %s'
+        
+    - name: Show success message
+      debug:
+        msg: "k8sadmin user created on {{ inventory_hostname }} using key from vault"

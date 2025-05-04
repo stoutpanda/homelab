@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "homelab"
+version = "0.1.0"
+description = "Homelab Infrastructure Management"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ansible>=8.0.0",
+    "netaddr",
+    "jmespath"
+]

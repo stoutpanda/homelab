@@ -1,0 +1,38 @@
+---
+- name: Store SSH Keys in Ansible Vault
+  hosts: localhost
+  gather_facts: false
+  
+  vars:
+    ansible_dir: "{{ lookup('env', 'HOME') }}/projects/homelab/ansible"
+  
+  tasks:
+    - name: Ensure vault directory exists
+      file:
+        path: "{{ ansible_dir }}/vault/keys"
+        state: directory
+        mode: '0700'
+        
+    - name: Read private key
+      slurp:
+        src: "~/.ssh/k8s_ansible_key"
+      register: private_key
+      
+    - name: Read public key
+      slurp:
+        src: "~/.ssh/k8s_ansible_key.pub"
+      register: public_key
+      
+    - name: Create vault YAML with SSH keys
+      copy:
+        content: |
+          ---
+          ssh_keys:
+            k8s_ansible:
+              private_key: "{{ private_key.content | b64decode }}"
+              public_key: "{{ public_key.content | b64decode }}"
+        dest: "{{ ansible_dir }}/vault/keys/ssh_keys.yml"
+        mode: '0600'
+      
+    - name: Encrypt the SSH keys file with Ansible Vault
+      command: ansible-vault encrypt "{{ ansible_dir }}/vault/keys/ssh_keys.yml"
