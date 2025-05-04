@@ -1,0 +1,17 @@
+---
+- name: Ping Test
+  hosts: raspberry_pis
+  gather_facts: no
+  
+  tasks:
+    - name: Ping all hosts
+      ping:
+      
+    - name: Get hostname
+      command: hostname
+      register: hostname_output
+      changed_when: false
+      
+    - name: Display hostname
+      debug:
+        msg: "Host {{ inventory_hostname }} reports hostname: {{ hostname_output.stdout }}"
