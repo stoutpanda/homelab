@@ -1,7 +1,7 @@
 ---
 - name: Ping Test
   hosts: raspberry_pis
-  gather_facts: no
+  gather_facts: yes  # Changed to yes to demonstrate fact gathering
   
   tasks:
     - name: Ping all hosts
@@ -15,3 +15,11 @@
     - name: Display hostname
       debug:
         msg: "Host {{ inventory_hostname }} reports hostname: {{ hostname_output.stdout }}"
+        
+    - name: Display some system facts
+      debug:
+        msg: |
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Architecture: {{ ansible_architecture }}
+          Memory: {{ ansible_memtotal_mb }} MB
+          IP Address: {{ ansible_default_ipv4.address }}
