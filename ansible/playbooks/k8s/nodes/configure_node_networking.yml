@@ -1,0 +1,95 @@
+---
+# configure_node_networking.yml
+- name: Configure basic networking for Kubernetes nodes
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    control_plane_gateway: "10.8.18.1"  # UDM-Pro interface is the gateway
+    k8s_api_vip: "10.8.18.2"  # Virtual IP for the HA control plane
+  
+  tasks:
+    - name: Set hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+      
+    - name: Update /etc/hosts with node's own entry
+      lineinfile:
+        path: /etc/hosts
+        line: "127.0.1.1 {{ inventory_hostname }}"
+        regexp: "^127.0.1.1"
+        state: present
+      
+    - name: Create netplan configuration for Kubernetes networking
+      copy:
+        dest: /etc/netplan/60-k8s-network.yaml
+        content: |
+          network:
+            version: 2
+            renderer: networkd
+            ethernets:
+              eth0:
+                dhcp4: no
+                addresses:
+                  - {{ hostvars[inventory_hostname]['ansible_host'] }}/27  # Control plane IP
+                routes:
+                  - to: default
+                    via: {{ control_plane_gateway }}
+                nameservers:
+                  addresses: [10.8.18.1, 1.1.1.1, 1.0.0.1]  # UDM-Pro first, then Cloudflare
+        mode: '0644'
+      register: netplan_config
+      
+    - name: Add control plane hosts to /etc/hosts
+      blockinfile:
+        path: /etc/hosts
+        block: |
+          # UDM-Pro Gateway
+          10.8.18.1 udm-gateway
+          
+          # Control plane nodes
+          10.8.18.86 k8s-cp-01
+          10.8.18.87 k8s-cp-02
+          10.8.18.88 k8s-cp-03
+          
+          # Virtual IP for HA control plane
+          {{ k8s_api_vip }} k8s-apiserver
+        marker: "# {mark} KUBERNETES NODES"
+        state: present
+      
+    - name: Check if netplan changes required
+      shell: netplan try --timeout=5
+      register: netplan_try
+      changed_when: false
+      failed_when: false
+      when: netplan_config.changed
+      
+    - name: Apply netplan configuration if valid
+      command: netplan apply
+      when: netplan_config.changed and netplan_try.rc == 0
+      
+    - name: Wait for connection to return if IP changed
+      wait_for_connection:
+        delay: 10
+        timeout: 60
+      when: netplan_config.changed and netplan_try.rc == 0
+      
+    - name: Show effective IP configuration
+      command: ip addr show eth0
+      register: ip_config
+      changed_when: false
+      
+    - name: Display IP configuration
+      debug:
+        msg: "{{ ip_config.stdout_lines }}"
+      
+    - name: Test DNS resolution
+      command: nslookup cloudflare.com
+      register: dns_test
+      changed_when: false
+      failed_when: false
+      
+    - name: Display DNS test results
+      debug:
+        msg: "{{ dns_test.stdout_lines }}"
