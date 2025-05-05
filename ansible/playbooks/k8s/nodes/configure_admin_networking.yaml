@@ -4,10 +4,7 @@
   hosts: admin_nodes
   become: true
   gather_facts: true
-  
-  vars:
-    admin_gateway: "10.8.16.1"  # UDM-Pro interface is the gateway
-    k8s_api_vip: "10.8.18.2"  # Virtual IP for HA control plane
+
   tasks:
     - name: Set hostname
       hostname:
@@ -36,7 +33,7 @@
                   - to: default
                     via: {{ admin_gateway }}
                 nameservers:
-                  addresses: [ {{ admin_gateway }}, 1.1.1.1, 1.0.0.1]  # UDM-Pro first, then Cloudflare
+                  addresses: [{{ admin_gateway }}, 1.1.1.1, 1.0.0.1]  # UDM-Pro first, then Cloudflare
         mode: '0644'
       register: netplan_config
       
@@ -45,7 +42,7 @@
         path: /etc/hosts
         block: |
           # UDM-Pro Gateway
-          10.8.16.1 udm-gateway
+          {{ admin_gateway }} udm-gateway
           
           # Control plane nodes
           10.8.18.86 k8s-cp-01
