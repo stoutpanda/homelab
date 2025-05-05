@@ -111,11 +111,6 @@ ansible/backups/
 *.pem
 *.crt
 
-# Ansible Vault files
-/ansible/vault/credentials.yml
-/ansible/vault/*.yml
-!/ansible/vault/README.md
-
 # Backup files that may contain sensitive configurations
 **/backups/  # Any backup directories throughout the project
 

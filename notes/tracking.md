@@ -191,76 +191,110 @@ Static Client Range: 10.0.1.221 - 10.0.1.254 (reserved)
 
 
 
-### Kubernetes Cluster Setup
+K8s Homelab Project Progress - May 4, 2025
+Completed Tasks
 
-# Kubernetes Homelab Project Progress - May 4, 2025
+✅ Set up Python environment using uv
+✅ Created initial inventory file with Raspberry Pi nodes
+✅ Verified network connectivity via ping tests
+✅ Generated dedicated SSH key for Kubernetes automation
+✅ Created k8sadmin user on all nodes for secure management
+✅ Implemented passwordless sudo for k8sadmin user
+✅ Updated inventory to use k8sadmin user and dedicated SSH key
+✅ Configured .gitignore to properly exclude Ansible Vault files
+✅ Stored SSH keys securely in Ansible Vault
+✅ Created recovery mechanism for SSH keys
+✅ Structured Ansible environment with proper group variables location
+✅ Created network configuration playbooks for control plane nodes
+✅ Set up static IP addressing and hostname configuration
+✅ Configured hosts files for internal resolution
+✅ Set up network gateway and DNS configuration
+✅ Set up netboot.xyz on Unraid for future MS01 worker node OS installation
+✅ Configured Intel vPro management interfaces for remote worker node management
 
-## Completed Tasks
+Current Infrastructure
 
-- ✅ Created basic Ansible directory structure (`~/projects/homelab/ansible/`)
-- ✅ Set up Python environment using `uv`
-- ✅ Created initial inventory file with Raspberry Pi nodes
-- ✅ Verified network connectivity via ping to control plane IPs
-- ✅ Resolved SSH authentication issues using SSH agent
-- ✅ Generated dedicated SSH key for Kubernetes automation
-- ✅ Created k8sadmin user on all nodes for secure management with vault-stored SSH key
-- ✅ Implemented passwordless sudo for k8sadmin user
-- ✅ Updated inventory to use k8sadmin user and dedicated SSH key
-- ✅ Configured .gitignore to properly exclude Ansible Vault files
-- ✅ Stored SSH keys securely in Ansible Vault
-- ✅ Created recovery mechanism for SSH keys
+Admin Node: Raspberry Pi 5 (16GB RAM) running Ubuntu 25.04
 
-## Current Infrastructure
+IP: 10.8.16.85 (Management), 10.8.18.85 (Control Plane)
+Role: Management of Kubernetes cluster
 
-- **Admin Node**: Raspberry Pi 5 (16GB RAM) running Ubuntu 25.04
-  - IP: 10.8.16.85 (Management), 10.8.18.85 (Control Plane)
-  - Role: Management of Kubernetes cluster
 
-- **Control Plane Nodes**: 3x Raspberry Pi 5 (8GB RAM) running Ubuntu 24.10
-  - k8s-cp-01: 10.8.16.86 (Management), 10.8.18.86 (Control Plane)
-  - k8s-cp-02: 10.8.16.87 (Management), 10.8.18.87 (Control Plane)
-  - k8s-cp-03: 10.8.16.88 (Management), 10.8.18.88 (Control Plane)
-  - Will form a highly available control plane
+Control Plane Nodes: 3x Raspberry Pi 5 (8GB RAM) running Ubuntu 24.10
 
-## Next Steps
+k8s-cp-01: 10.8.18.86 (Control Plane)
+k8s-cp-02: 10.8.18.87 (Control Plane)
+k8s-cp-03: 10.8.18.88 (Control Plane)
+Will form a highly available control plane
 
-1. Install Kubernetes prerequisites on all nodes
-   - Disable swap
-   - Load required kernel modules
-   - Configure system settings
 
-2. Install container runtime (containerd)
-   - Configure with systemd cgroup driver
-   - Optimize for Raspberry Pi hardware
+Planned Worker Nodes: 2x Minisforum MS-01 nodes (not yet installed)
 
-3. Install Kubernetes components
-   - kubeadm, kubelet, kubectl (version 1.28.0)
-   - Configure for arm64 architecture
+Future IPs:
 
-4. Set up HA control plane
-   - HAProxy and Keepalived for a virtual IP
-   - Initialize the first control plane node
-   - Join additional control plane nodes
+k8s-ms-01-node-1: Management: 10.8.16.90, Control Plane: 10.8.18.90, vPro: 10.8.16.190
+k8s-ms-01-node-2: Management: 10.8.16.91, Control Plane: 10.8.18.91, vPro: 10.8.16.191
 
-5. Deploy Kubernetes networking (Cilium)
-   - Configure optimal settings for Raspberry Pi
-   - Set up network policies
 
-## Learning Progress
+OS to be installed via netboot.xyz configured on Unraid
+vPro management interfaces configured and tested
 
-- Gained understanding of Ansible inventory structure and connection methods
-- Learned how to securely store and retrieve SSH keys using Ansible Vault
-- Implemented proper user management across multiple nodes
-- Configured SSH authentication for automation
-- Established foundation for declarative infrastructure management
 
-## Current Blockers
 
-- None - Initial setup phases completed successfully
+Next Steps
 
-## Notes
+Install Kubernetes prerequisites on control plane nodes
 
-- The project is intentionally proceeding step-by-step for learning purposes
-- Network connectivity is established across all VLANs
-- User and authentication mechanisms are in place
-- Next focus will be Kubernetes component installation
+Disable swap
+Load required kernel modules
+Configure system settings
+
+
+Install container runtime (containerd)
+
+Configure with systemd cgroup driver
+Optimize for hardware
+
+
+Install Kubernetes components
+
+kubeadm, kubelet, kubectl (version 1.28.0)
+Configure for target architecture
+
+
+Set up HA control plane
+
+HAProxy and Keepalived for a virtual IP (10.8.18.2)
+Initialize the first control plane node
+Join additional control plane nodes
+
+
+Deploy Kubernetes networking (Cilium)
+
+Configure optimal settings for the hardware
+Set up network policies
+
+
+Install OSes on worker nodes via netboot
+
+Leverage configured netboot.xyz on Unraid
+Use vPro for remote management during installation
+
+
+
+Learning Progress
+
+Successfully implemented proper Ansible directory structure
+Configured group variables correctly
+Created modular playbooks for different aspects of setup
+Structured the configuration process into logical phases
+Designed a high-availability Kubernetes control plane
+Configured PXE boot environment for worker node installation
+
+Notes
+
+The project is intentionally proceeding step-by-step for learning purposes
+Network connectivity is established across the control plane
+Authentication mechanisms are in place with k8sadmin user
+Next focus will be Kubernetes prerequisites and component installation
+Worker nodes will be installed after the control plane is operationalS

@@ -1,0 +1,65 @@
+---
+# netplan_diagnostics.yml
+- name: Diagnose netplan issues
+  hosts: all
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Validate current netplan configuration
+      command: netplan get
+      register: netplan_validate
+      changed_when: false
+      
+    - name: Display current netplan configuration
+      debug:
+        msg: "{{ netplan_validate.stdout_lines }}"
+        
+    - name: Check netplan config syntax only
+      command: netplan generate
+      register: netplan_generate
+      changed_when: false
+      failed_when: false
+      
+    - name: Display netplan generate output
+      debug:
+        msg: "{{ netplan_generate.stderr_lines if netplan_generate.stderr_lines is defined else 'No errors found' }}"
+        
+    - name: Check system logs for netplan errors
+      shell: "journalctl -b | grep -i netplan | tail -n 20"
+      register: netplan_logs
+      changed_when: false
+      failed_when: false
+      
+    - name: Display netplan logs
+      debug:
+        msg: "{{ netplan_logs.stdout_lines if netplan_logs.stdout_lines is defined else 'No netplan logs found' }}"
+        
+    - name: List all netplan configuration files
+      shell: "ls -la /etc/netplan/"
+      register: netplan_files
+      changed_when: false
+      
+    - name: Display netplan files
+      debug:
+        msg: "{{ netplan_files.stdout_lines }}"
+        
+    - name: Check if netplan daemon is running
+      shell: "systemctl status systemd-networkd"
+      register: networkd_status
+      changed_when: false
+      failed_when: false
+      
+    - name: Display networkd status
+      debug:
+        msg: "{{ networkd_status.stdout_lines }}"
+        
+    - name: Attempt netplan try with all output
+      shell: "netplan try --timeout=5 2>&1 || echo 'Command timed out or errored'"
+      register: netplan_try_debug
+      changed_when: false
+      failed_when: false
+      
+    - name: Display netplan try debug output
+      debug:
+        msg: "{{ netplan_try_debug.stdout_lines if netplan_try_debug.stdout_lines is defined else 'No output' }}"
