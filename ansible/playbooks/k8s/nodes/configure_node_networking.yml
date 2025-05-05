@@ -54,22 +54,22 @@
         marker: "# {mark} KUBERNETES NODES"
         state: present
       
-    - name: Check if netplan changes required
-      shell: netplan try --timeout=5
-      register: netplan_try
+    - name: Check netplan syntax
+      command: netplan generate
+      register: netplan_generate
       changed_when: false
-      failed_when: false
+      failed_when: netplan_generate.rc != 0
       when: netplan_config.changed
-      
-    - name: Apply netplan configuration if valid
+
+    - name: Apply netplan configuration if syntax is valid
       command: netplan apply
-      when: netplan_config.changed and netplan_try.rc == 0
-      
-    - name: Wait for connection to return if IP changed
+      when: netplan_config.changed and netplan_generate.rc == 0
+
+    - name: Wait for network to stabilize
       wait_for_connection:
-        delay: 10
+        delay: 5
         timeout: 60
-      when: netplan_config.changed and netplan_try.rc == 0
+      when: netplan_config.changed and netplan_generate.rc == 0
       
     - name: Show effective IP configuration
       command: ip addr show eth0
