@@ -189,8 +189,6 @@ Static Client Range: 10.0.1.221 - 10.0.1.254 (reserved)
   - **Note:** Encountered limitation: Native VLANs with custom tagged VLANs are not supported on the K8s switch (USW-Flex-2.5G-K8s-Main?). K8s-CP nodes and Admin box currently only have access via their primary (VLAN 16 / VLAN 18) interfaces configured on the switch ports.
 
 
-
-
 K8s Homelab Project Progress - May 4, 2025
 Completed Tasks
 
@@ -206,11 +204,12 @@ Completed Tasks
 ✅ Created recovery mechanism for SSH keys
 ✅ Structured Ansible environment with proper group variables location
 ✅ Created network configuration playbooks for control plane nodes
-✅ Set up static IP addressing and hostname configuration
-✅ Configured hosts files for internal resolution
-✅ Set up network gateway and DNS configuration
+✅ Successfully applied network configuration to all control plane nodes
+✅ Created hosts file entries for internal resolution
 ✅ Set up netboot.xyz on Unraid for future MS01 worker node OS installation
 ✅ Configured Intel vPro management interfaces for remote worker node management
+✅ Improved Ansible handling of netplan configuration to avoid hanging issues
+✅ Recovered and verified all control plane nodes after network reconfiguration
 
 Current Infrastructure
 
@@ -225,7 +224,7 @@ Control Plane Nodes: 3x Raspberry Pi 5 (8GB RAM) running Ubuntu 24.10
 k8s-cp-01: 10.8.18.86 (Control Plane)
 k8s-cp-02: 10.8.18.87 (Control Plane)
 k8s-cp-03: 10.8.18.88 (Control Plane)
-Will form a highly available control plane
+All nodes have static IP configuration and proper DNS settings
 
 
 Planned Worker Nodes: 2x Minisforum MS-01 nodes (not yet installed)
@@ -241,36 +240,19 @@ vPro management interfaces configured and tested
 
 
 
-Current Issues
-
-⚠️ Network Configuration Problem: Lost connectivity to control plane Raspberry Pi nodes after applying network configuration
-
-Issue may be related to missing VLAN tagging configuration in netplan
-Physical access to nodes will be required to fix the network configuration
-Need to align netplan configuration with physical switch port VLAN settings
-
-
-
 Next Steps
 
-Fix network configuration on Raspberry Pi nodes
+Update all nodes (apt update/upgrade)
 
-Physically access the nodes to restore network connectivity
-Correct netplan configuration to include VLAN tagging if required
-Ensure alignment between physical network and netplan configuration
+Ensure all systems have the latest security patches and packages
+Apply any pending kernel updates
 
 
-Resume the original plan:
-
-Install Kubernetes prerequisites
-Install container runtime (containerd)
-Install Kubernetes components
-Set up HA control plane
-Deploy networking solution
+Install Kubernetes prerequisites on control plane nodes
 
 Disable swap
-Load required kernel modules
-Configure system settings
+Load required kernel modules (overlay, br_netfilter)
+Configure system settings (sysctl parameters)
 
 
 Install container runtime (containerd)
@@ -292,32 +274,20 @@ Initialize the first control plane node
 Join additional control plane nodes
 
 
-Deploy Kubernetes networking (Cilium)
 
-Configure optimal settings for the hardware
-Set up network policies
+Learning Lessons
 
-
-Install OSes on worker nodes via netboot
-
-Leverage configured netboot.xyz on Unraid
-Use vPro for remote management during installation
-
-
-
-Learning Progress
-
-Successfully implemented proper Ansible directory structure
-Configured group variables correctly
-Created modular playbooks for different aspects of setup
-Structured the configuration process into logical phases
-Designed a high-availability Kubernetes control plane
-Configured PXE boot environment for worker node installation
+Network configuration changes should be made with caution when working remotely
+Ansible's netplan try command can cause playbooks to hang due to its interactive nature
+Better to use netplan generate for validation and netplan apply for implementation
+Include proper wait steps and validation after network changes
+Ensure consistent approach between inventory configuration and playbook execution
+Testing one node before applying to all nodes can prevent widespread issues
 
 Notes
 
 The project is intentionally proceeding step-by-step for learning purposes
-Network connectivity is established across the control plane
-Authentication mechanisms are in place with k8sadmin user
-Next focus will be Kubernetes prerequisites and component installation
-Worker nodes will be installed after the control plane is operationalS
+Network configuration is now complete and stable on all control plane nodes
+All nodes have proper hostname resolution via /etc/hosts entries
+DNS resolution is functioning correctly on all nodes
+Ready to proceed with Kubernetes component installation
