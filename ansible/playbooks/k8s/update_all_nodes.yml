@@ -1,0 +1,46 @@
+---
+# update_nodes.yml
+- name: Update all Kubernetes nodes
+  hosts: raspberry_pis
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600  # Consider cache valid for 1 hour
+      register: apt_update_result
+      
+    - name: Display update status
+      debug:
+        msg: "Package cache updated: {{ apt_update_result.changed }}"
+      
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist  # Perform a distribution upgrade
+        autoremove: yes  # Remove packages that are no longer needed
+      register: apt_upgrade_result
+      
+    - name: Display upgrade details
+      debug:
+        msg: >
+          System updated. 
+          Changed: {{ apt_upgrade_result.changed }}
+          Upgraded packages: {{ apt_upgrade_result.upgraded | default(0) }}
+      
+    - name: Check if reboot is required
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      
+    - name: Notify if reboot is required
+      debug:
+        msg: "REBOOT REQUIRED: System needs to be rebooted to apply updates."
+      when: reboot_required.stat.exists
+      
+    - name: Reboot if required
+      reboot:
+        reboot_timeout: 600  # Wait up to 10 minutes for reboot to complete
+        post_reboot_delay: 30  # Wait 30 seconds after reboot before continuing
+      when: reboot_required.stat.exists and ansible_distribution == 'Ubuntu'
