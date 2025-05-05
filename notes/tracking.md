@@ -241,9 +241,32 @@ vPro management interfaces configured and tested
 
 
 
+Current Issues
+
+⚠️ Network Configuration Problem: Lost connectivity to control plane Raspberry Pi nodes after applying network configuration
+
+Issue may be related to missing VLAN tagging configuration in netplan
+Physical access to nodes will be required to fix the network configuration
+Need to align netplan configuration with physical switch port VLAN settings
+
+
+
 Next Steps
 
-Install Kubernetes prerequisites on control plane nodes
+Fix network configuration on Raspberry Pi nodes
+
+Physically access the nodes to restore network connectivity
+Correct netplan configuration to include VLAN tagging if required
+Ensure alignment between physical network and netplan configuration
+
+
+Resume the original plan:
+
+Install Kubernetes prerequisites
+Install container runtime (containerd)
+Install Kubernetes components
+Set up HA control plane
+Deploy networking solution
 
 Disable swap
 Load required kernel modules
