@@ -28,7 +28,7 @@
               eth0:
                 dhcp4: no
                 addresses:
-                  - {{ hostvars[inventory_hostname]['ansible_host'] }}/27  # Control plane IP
+                  - {{ hostvars[inventory_hostname]['ansible_host'] }}/24  # Control plane IP
                 routes:
                   - to: default
                     via: {{ admin_gateway }}

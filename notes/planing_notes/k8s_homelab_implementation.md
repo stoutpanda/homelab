@@ -43,12 +43,12 @@
 | 5 | Unifi-Protect | 10.0.5.0/24 | 10.0.5.1 | Security Cameras |
 | 6 | Reverse-Proxy | 10.6.6.0/24 | 10.6.6.1 | External Access |
 | 10 | Public-Services | 10.10.10.0/24 | 10.10.10.1 | Media & Shared Resources |
-| 16 | K8s-Management | 10.8.16.0/27 | 10.8.16.1 | Kubernetes Management |
-| 18 | K8s-Control-Plane | 10.8.18.0/27 | 10.8.18.1 | API Server, etcd |
+| 16 | K8s-Management | 10.8.16.0/24 | 10.8.16.1 | Kubernetes Management |
+| 18 | K8s-Control-Plane | 10.8.18.0/24 | 10.8.18.1 | API Server, etcd |
 | 28 | K8s-Pod-Network | 10.8.28.0/23 | 10.8.28.1 | Container Traffic |
 | 38 | K8s-Service-Network | 10.8.38.0/26 | 10.8.38.1 | Service Discovery |
-| 48 | K8s-Storage-Network | 10.8.48.0/27 | 10.8.48.1 | Ceph Storage Traffic |
-| 58 | K8s-LoadBalancer | 10.8.58.0/27 | 10.8.58.1 | External Service Access |
+| 48 | K8s-Storage-Network | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Traffic |
+| 58 | K8s-LoadBalancer | 10.8.58.0/24 | 10.8.58.1 | External Service Access |
 
 ## 3. Implementation Phases
 
