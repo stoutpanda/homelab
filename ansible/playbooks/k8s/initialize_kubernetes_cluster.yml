@@ -1,0 +1,132 @@
+---
+# initialize_kubernetes_cluster.yml
+- name: Initialize Kubernetes cluster on first control plane node
+  hosts: k8s-cp-01  # Only target the first control plane node
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Create directory for kubeadm config
+      file:
+        path: /etc/kubernetes/
+        state: directory
+        mode: '0755'
+    
+    - name: Create kubeadm config file
+      template:
+        src: kubeadm-config.yaml.j2
+        dest: /etc/kubernetes/kubeadm-config.yaml
+        mode: '0644'
+      register: kubeadm_config
+    
+    - name: Display kubeadm config
+      debug:
+        msg: "{{ lookup('file', '/etc/kubernetes/kubeadm-config.yaml') }}"
+      when: kubeadm_config.changed
+    
+    - name: Initialize Kubernetes cluster
+      command: kubeadm init --config=/etc/kubernetes/kubeadm-config.yaml --upload-certs
+      register: kubeadm_init
+      # Only run if cluster is not already initialized
+      args:
+        creates: /etc/kubernetes/manifests/kube-apiserver.yaml
+    
+    - name: Display kubeadm init output
+      debug:
+        msg: "{{ kubeadm_init.stdout_lines }}"
+      when: kubeadm_init.changed
+    
+    - name: Create .kube directory for root user
+      file:
+        path: /root/.kube
+        state: directory
+        mode: '0700'
+      when: kubeadm_init.changed
+    
+    - name: Copy admin.conf to root's .kube/config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        mode: '0600'
+      when: kubeadm_init.changed
+    
+    - name: Create .kube directory for k8sadmin user
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+      when: kubeadm_init.changed
+    
+    - name: Copy admin.conf to k8sadmin's .kube/config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        remote_src: yes
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+      when: kubeadm_init.changed
+    
+    - name: Install Cilium CLI
+      shell: |
+        CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+        CLI_ARCH=arm64
+        curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz
+        tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+        rm cilium-linux-${CLI_ARCH}.tar.gz
+      args:
+        creates: /usr/local/bin/cilium
+      when: kubeadm_init.changed
+    
+    - name: Install Cilium CNI
+      become_user: k8sadmin
+      shell: cilium install --version {{ cilium_version }}
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      when: kubeadm_init.changed
+    
+    - name: Wait for control plane to be ready
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      register: nodes_status
+      until: "'NotReady' not in nodes_status.stdout"
+      retries: 15
+      delay: 20
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      when: kubeadm_init.changed
+    
+    - name: Display cluster status
+      become_user: k8sadmin
+      shell: kubectl get nodes -o wide
+      register: get_nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      changed_when: false
+    
+    - name: Show node status
+      debug:
+        msg: "{{ get_nodes.stdout_lines }}"
+    
+    - name: Get cluster join command for control plane nodes
+      shell: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+    
+    - name: Get certificate key for control plane nodes
+      shell: kubeadm init phase upload-certs --upload-certs | grep -A1 "certificate key" | tail -n1
+      register: certificate_key
+      changed_when: false
+    
+    - name: Display join command for worker nodes
+      debug:
+        msg: "{{ join_command.stdout }}"
+    
+    - name: Display join command for control plane nodes
+      debug:
+        msg: "{{ join_command.stdout }} --control-plane --certificate-key {{ certificate_key.stdout }}"
