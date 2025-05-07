@@ -1,0 +1,98 @@
+
+---
+# install_k8s_components.yml
+- name: Install Kubernetes components (kubeadm, kubelet, kubectl)
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    kubernetes_version: "1.33"  # Specify the desired Kubernetes minor version
+  
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+        state: present
+        update_cache: yes
+      
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      
+    - name: Download Kubernetes GPG key
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      
+    - name: Add Kubernetes repository
+      apt_repository:
+        repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /
+        state: present
+        filename: kubernetes
+      
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      
+    - name: Install Kubernetes components
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+      
+    - name: Hold kubelet package version
+      dpkg_selections:
+        name: kubelet
+        selection: hold
+      
+    - name: Hold kubeadm package version
+      dpkg_selections:
+        name: kubeadm
+        selection: hold
+      
+    - name: Hold kubectl package version
+      dpkg_selections:
+        name: kubectl
+        selection: hold
+      
+    - name: Create kubelet configuration directory
+      file:
+        path: /etc/default
+        state: directory
+        mode: '0755'
+      
+    - name: Configure kubelet to use systemd cgroup driver
+      copy:
+        dest: /etc/default/kubelet
+        content: |
+          KUBELET_EXTRA_ARGS=--cgroup-driver=systemd
+        mode: '0644'
+      
+    - name: Enable kubelet service
+      systemd:
+        name: kubelet
+        daemon_reload: yes
+        enabled: yes
+      
+    - name: Start kubelet service
+      systemd:
+        name: kubelet
+        state: started
+      
+    - name: Verify Kubernetes components installation
+      command: kubeadm version
+      register: kubeadm_version
+      changed_when: false
+      
+    - name: Display kubeadm version
+      debug:
+        msg: "{{ kubeadm_version.stdout }}"
