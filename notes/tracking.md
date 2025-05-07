@@ -240,54 +240,65 @@ vPro management interfaces configured and tested
 
 
 
-Next Steps
+# Kubernetes Homelab Progress - May 6, 2025
 
-Update all nodes (apt update/upgrade)
+## Today's Accomplishments
 
-Ensure all systems have the latest security patches and packages
-Apply any pending kernel updates
+- ✅ Successfully installed Kubernetes prerequisites on all control plane nodes
+- ✅ Installed containerd as the container runtime
+- ✅ Installed Kubernetes components (kubeadm, kubelet, kubectl v1.33.0)
+- ✅ Initialized first control plane node (k8s-cp-01)
+- ✅ Installed Cilium CNI v1.17.3
+- ✅ Joined additional control plane nodes (k8s-cp-02, k8s-cp-03)
+- ✅ Created a functioning 3-node high availability control plane
+- ✅ Initial setup of HAProxy and Keepalived for HA (needs troubleshooting)
 
+## Current Status
 
-Install Kubernetes prerequisites on control plane nodes
+| Component            | Status    | Notes                                    |
+|----------------------|-----------|------------------------------------------|
+| Control Plane Nodes  | ✅ Ready   | All 3 nodes running and in Ready status  |
+| Container Runtime    | ✅ Ready   | containerd 2.0.0 installed and running   |
+| CNI Plugin           | ✅ Ready   | Cilium 1.17.3 installed and operational  |
+| API Server           | ✅ Ready   | Accessible via individual node IPs       |
+| Control Plane HA     | ⚠️ In Progress | HAProxy/Keepalived installed but VIP not accessible |
+| Worker Nodes         | 🔜 Planned | Not yet started                          |
 
-Disable swap
-Load required kernel modules (overlay, br_netfilter)
-Configure system settings (sysctl parameters)
+## Next Steps
 
+1. **Troubleshoot and Fix HA Configuration**:
+   - Debug "no route to host" error for VIP (10.8.18.2)
+   - Check Keepalived logs and interface configuration
+   - Verify firewall/network rules for VIP
+   - Confirm HAProxy configuration
 
-Install container runtime (containerd)
+2. **Join Worker Nodes**:
+   - Prepare worker node prerequisite playbook
+   - Join MS-01 nodes to the cluster
 
-Configure with systemd cgroup driver
-Optimize for hardware
+3. **Set Up Storage**:
+   - Configure persistent storage solution
+   - Set up StorageClass for Kubernetes
 
+## Playbooks Created
 
-Install Kubernetes components
+1. `install_k8s_prerequisites.yml` - Installs all prerequisites
+2. `install_containerd.yml` - Installs container runtime
+3. `install_kubernetes_components.yml` - Installs Kubernetes components
+4. `initialize_kubernetes_cluster.yml` - Sets up first control plane node 
+5. `join_control_plane_nodes.yml` - Joins additional control plane nodes
+6. `setup_ha_control_plane.yml` - Added, but VIP configuration needs troubleshooting
 
-kubeadm, kubelet, kubectl (version 1.28.0)
-Configure for target architecture
+## Commands to Resume Tomorrow
 
+```bash
+# Check the status of Keepalived and HAProxy services
+ansible control_plane_nodes -m shell -a "systemctl status keepalived" --become
+ansible control_plane_nodes -m shell -a "systemctl status haproxy" --become
 
-Set up HA control plane
+# Check if virtual IP is assigned to any node
+ansible control_plane_nodes -m shell -a "ip addr show" --become | grep '10.8.18.2'
 
-HAProxy and Keepalived for a virtual IP (10.8.18.2)
-Initialize the first control plane node
-Join additional control plane nodes
-
-
-
-Learning Lessons
-
-Network configuration changes should be made with caution when working remotely
-Ansible's netplan try command can cause playbooks to hang due to its interactive nature
-Better to use netplan generate for validation and netplan apply for implementation
-Include proper wait steps and validation after network changes
-Ensure consistent approach between inventory configuration and playbook execution
-Testing one node before applying to all nodes can prevent widespread issues
-
-Notes
-
-The project is intentionally proceeding step-by-step for learning purposes
-Network configuration is now complete and stable on all control plane nodes
-All nodes have proper hostname resolution via /etc/hosts entries
-DNS resolution is functioning correctly on all nodes
-Ready to proceed with Kubernetes component installation
+# Check Keepalived logs
+ansible control_plane_nodes -m shell -a "grep -i keepalived /var/log/syslog | tail -n 20" --become
+```

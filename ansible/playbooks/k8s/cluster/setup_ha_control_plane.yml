@@ -1,0 +1,81 @@
+---
+# setup_ha_control_plane.yml
+- name: Set up high availability for Kubernetes control plane
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Install HAProxy and Keepalived
+      apt:
+        name:
+          - haproxy
+          - keepalived
+        state: present
+        update_cache: yes
+      
+    - name: Configure HAProxy
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        mode: '0644'
+      register: haproxy_config
+      
+    - name: Create Keepalived configuration
+      template:
+        src: keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+        mode: '0644'
+      register: keepalived_config
+      
+    - name: Restart HAProxy if configuration changed
+      systemd:
+        name: haproxy
+        state: restarted
+        enabled: yes
+      when: haproxy_config.changed
+      
+    - name: Restart Keepalived if configuration changed
+      systemd:
+        name: keepalived
+        state: restarted
+        enabled: yes
+      when: keepalived_config.changed
+      
+    - name: Wait for VIP to become active
+      wait_for:
+        host: "{{ k8s_api_vip }}"
+        port: "{{ k8s_api_port }}"
+        timeout: 180
+      register: vip_check
+      ignore_errors: yes
+      
+    - name: Show VIP status
+      debug:
+        msg: "VIP {{ 'is active' if vip_check.failed == false else 'is not active' }}"
+      
+    - name: Update kubeconfig to use the VIP (on k8s-cp-01 only)
+      become_user: k8sadmin
+      shell: kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_api_port }}
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      when: inventory_hostname == 'k8s-cp-01'
+      register: kubeconfig_update
+      
+    - name: Display kubeconfig update result
+      debug:
+        msg: "{{ kubeconfig_update.stdout if kubeconfig_update is defined and kubeconfig_update.stdout is defined else 'No update needed' }}"
+      when: inventory_hostname == 'k8s-cp-01'
+      
+    - name: Verify connection to Kubernetes API server using VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_check
+      when: inventory_hostname == 'k8s-cp-01'
+      
+    - name: Display kubectl check result
+      debug:
+        msg: "{{ kubectl_check.stdout_lines }}"
+      when: inventory_hostname == 'k8s-cp-01'
