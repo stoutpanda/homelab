@@ -1,0 +1,98 @@
+---
+# join_control_plane_nodes.yml
+- name: Get join information from first control plane node
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Get cluster join command
+      shell: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+    
+    - name: Get certificate key for control plane
+      shell: kubeadm init phase upload-certs --upload-certs | grep -A1 "certificate key" | tail -n1
+      register: certificate_key
+      changed_when: false
+    
+    - name: Set join command fact
+      set_fact:
+        kubeadm_join_command: "{{ join_command.stdout }} --control-plane --certificate-key {{ certificate_key.stdout }}"
+    
+    - name: Display join command
+      debug:
+        msg: "{{ kubeadm_join_command }}"
+
+- name: Join additional control plane nodes to the cluster
+  hosts: k8s-cp-02:k8s-cp-03
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Copy join command from first control plane node
+      set_fact:
+        kubeadm_join_command: "{{ hostvars['k8s-cp-01']['kubeadm_join_command'] }}"
+    
+    - name: Join the cluster
+      command: "{{ kubeadm_join_command }}"
+      args:
+        creates: /etc/kubernetes/manifests/kube-apiserver.yaml
+      register: join_result
+    
+    - name: Display join output
+      debug:
+        msg: "{{ join_result.stdout_lines | default('Node already joined') }}"
+      when: join_result is defined and join_result.stdout_lines is defined
+    
+    - name: Create .kube directory for root user
+      file:
+        path: /root/.kube
+        state: directory
+        mode: '0700'
+    
+    - name: Copy admin.conf to root's .kube/config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        mode: '0600'
+    
+    - name: Create .kube directory for k8sadmin user
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+    
+    - name: Copy admin.conf to k8sadmin's .kube/config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        remote_src: yes
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+    
+    - name: Wait for node to become ready
+      become_user: k8sadmin
+      shell: kubectl get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+      register: node_status
+      until: node_status.stdout == "True"
+      retries: 30
+      delay: 10
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+    
+    - name: Display cluster status
+      become_user: k8sadmin
+      shell: kubectl get nodes -o wide
+      register: get_nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      changed_when: false
+    
+    - name: Show node status
+      debug:
+        msg: "{{ get_nodes.stdout_lines }}"

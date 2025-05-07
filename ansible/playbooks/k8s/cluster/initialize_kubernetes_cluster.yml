@@ -36,12 +36,19 @@
         msg: "{{ kubeadm_init.stdout_lines }}"
       when: kubeadm_init.changed
     
+    - name: Wait for API server to be available
+      wait_for:
+        host: "{{ hostvars['k8s-cp-01']['ansible_host'] }}"
+        port: 6443
+        timeout: 180
+      when: kubeadm_init.changed
+    
+    # Always run kubeconfig setup steps, regardless of whether init just ran or not
     - name: Create .kube directory for root user
       file:
         path: /root/.kube
         state: directory
         mode: '0700'
-      when: kubeadm_init.changed
     
     - name: Copy admin.conf to root's .kube/config
       copy:
@@ -49,7 +56,6 @@
         dest: /root/.kube/config
         remote_src: yes
         mode: '0600'
-      when: kubeadm_init.changed
     
     - name: Create .kube directory for k8sadmin user
       file:
@@ -58,7 +64,6 @@
         owner: k8sadmin
         group: k8sadmin
         mode: '0700'
-      when: kubeadm_init.changed
     
     - name: Copy admin.conf to k8sadmin's .kube/config
       copy:
@@ -68,7 +73,17 @@
         owner: k8sadmin
         group: k8sadmin
         mode: '0600'
-      when: kubeadm_init.changed
+    
+    # Create proper RBAC permissions (fixing forbidden error)
+    - name: Create cluster RBAC admin binding for kubernetes-admin
+      become_user: k8sadmin
+      shell: |
+        kubectl create clusterrolebinding kubernetes-admin-binding \
+        --clusterrole=cluster-admin \
+        --user=kubernetes-admin
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      failed_when: false  # It's okay if this already exists
     
     - name: Install Cilium CLI
       shell: |
@@ -79,7 +94,6 @@
         rm cilium-linux-${CLI_ARCH}.tar.gz
       args:
         creates: /usr/local/bin/cilium
-      when: kubeadm_init.changed
     
     - name: Install Cilium CNI
       become_user: k8sadmin
@@ -88,7 +102,23 @@
         executable: /bin/bash
       environment:
         KUBECONFIG: /home/k8sadmin/.kube/config
-      when: kubeadm_init.changed
+      register: cilium_install
+    
+    - name: Display Cilium installation output
+      debug:
+        msg: "{{ cilium_install.stdout_lines }}"
+    
+    # Wait for everything to be ready
+    - name: Wait for Cilium to be ready
+      become_user: k8sadmin
+      shell: cilium status --wait
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: cilium_status
+      failed_when: false
+      retries: 10
+      delay: 30
+      until: cilium_status.rc == 0
     
     - name: Wait for control plane to be ready
       become_user: k8sadmin
@@ -99,7 +129,6 @@
       delay: 20
       environment:
         KUBECONFIG: /home/k8sadmin/.kube/config
-      when: kubeadm_init.changed
     
     - name: Display cluster status
       become_user: k8sadmin

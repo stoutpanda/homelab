@@ -1,0 +1,90 @@
+---
+# debug_kubernetes_cluster.yml
+- name: Debug Kubernetes cluster on first control plane node
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check if /etc/kubernetes/admin.conf exists
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: admin_conf
+      
+    - name: Display admin.conf status
+      debug:
+        msg: "/etc/kubernetes/admin.conf {{ 'exists' if admin_conf.stat.exists else 'does not exist' }}"
+    
+    - name: Check if API server pods are running
+      shell: "crictl ps | grep kube-apiserver"
+      register: apiserver_status
+      failed_when: false
+      changed_when: false
+      
+    - name: Display API server status
+      debug:
+        msg: "{{ 'API server is running' if apiserver_status.rc == 0 else 'API server is not running' }}"
+        
+    - name: Check kubelet status
+      systemd:
+        name: kubelet
+      register: kubelet_status
+      
+    - name: Display kubelet status
+      debug:
+        msg: "Kubelet is {{ kubelet_status.status.ActiveState }}"
+    
+    - name: View kubelet logs
+      shell: "journalctl -xu kubelet --no-pager -n 30"
+      register: kubelet_logs
+      changed_when: false
+      
+    - name: Display kubelet logs
+      debug:
+        msg: "{{ kubelet_logs.stdout_lines }}"
+    
+    - name: Create .kube directory for k8sadmin user if necessary
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+      when: admin_conf.stat.exists
+    
+    - name: Copy admin.conf to k8sadmin's .kube/config if necessary
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        remote_src: yes
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+      when: admin_conf.stat.exists
+      
+    - name: Try kubectl with explicit kubeconfig
+      become_user: k8sadmin
+      shell: "kubectl --kubeconfig=/home/k8sadmin/.kube/config get nodes"
+      register: kubectl_check
+      failed_when: false
+      changed_when: false
+      
+    - name: Display kubectl check results
+      debug:
+        msg: "{{ kubectl_check.stdout_lines if kubectl_check.rc == 0 else kubectl_check.stderr_lines }}"
+    
+    - name: Check if admin.conf contains correct API server address
+      shell: "grep server /etc/kubernetes/admin.conf || echo 'No server found'"
+      register: server_address
+      changed_when: false
+      when: admin_conf.stat.exists
+      
+    - name: Display API server address from admin.conf
+      debug:
+        msg: "{{ server_address.stdout_lines }}"
+      when: admin_conf.stat.exists
+      
+    - name: Check if kubeadm reset is necessary
+      pause:
+        prompt: "Based on the debug information, do you want to reset the Kubernetes cluster and re-initialize? (yes/no)"
+      register: reset_choice

@@ -1,0 +1,63 @@
+---
+# reset_kubernetes_cluster.yml
+- name: Reset Kubernetes cluster to a clean state
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Reset kubeadm
+      command: kubeadm reset --force
+      
+    - name: Remove CNI configurations
+      file:
+        path: /etc/cni/net.d
+        state: absent
+      
+    - name: Remove Kubernetes configuration directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /root/.kube
+        - /home/k8sadmin/.kube
+        - /var/lib/etcd
+      
+    - name: Remove any leftover kubelet configuration
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /var/lib/kubelet/config.yaml
+        - /var/lib/kubelet/kubeadm-flags.env
+      
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        
+    - name: Restart kubelet
+      systemd:
+        name: kubelet
+        state: restarted
+        
+    - name: Remove Cilium CLI
+      file:
+        path: /usr/local/bin/cilium
+        state: absent
+        
+    - name: Flush iptables rules
+      shell: |
+        iptables -F
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -X
+      
+    - name: Verify all Kubernetes resources are gone
+      shell: ps aux | grep kube
+      register: processes
+      changed_when: false
+      
+    - name: Display running Kubernetes processes if any
+      debug:
+        msg: "{{ processes.stdout_lines }}"
