@@ -1,0 +1,49 @@
+---
+# install_containerd.yml
+- name: Install containerd runtime for Kubernetes
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Install containerd package
+      apt:
+        name: containerd
+        state: present
+        update_cache: yes
+      
+    - name: Create containerd configuration directory
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+      
+    - name: Generate default containerd configuration
+      shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+      register: default_config
+      
+    - name: Update containerd configuration to use systemd cgroup driver
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
+      when: default_config.changed
+      
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        daemon_reload: yes
+        enabled: yes
+      
+    - name: Verify containerd is running
+      systemd:
+        name: containerd
+        state: started
+      register: containerd_status
+      
+    - name: Display containerd status
+      debug:
+        msg: "Containerd service is {{ 'running' if containerd_status.status.ActiveState == 'active' else 'not running' }}"
