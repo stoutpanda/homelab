@@ -1,0 +1,30 @@
+# Improved keepalived.conf
+global_defs {
+  script_user root      # Temporarily use root while debugging
+  enable_script_security
+}
+
+vrrp_script check_haproxy {
+  script "/usr/bin/killall -0 haproxy"
+  interval 2
+  weight 2
+  user root             # Explicitly set user for this script
+}
+
+vrrp_instance VI_1 {
+  state MASTER          # For k8s-cp-01, BACKUP for others
+  interface eth0        # Confirm this matches your actual interface name
+  virtual_router_id 51
+  priority 101          # 100 and 99 for other nodes
+  advert_int 1
+  authentication {
+    auth_type PASS
+    auth_pass kubernetes
+  }
+  virtual_ipaddress {
+    10.8.18.2/24
+  }
+  track_script {
+    check_haproxy
+  }
+}

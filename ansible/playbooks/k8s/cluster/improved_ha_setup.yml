@@ -1,0 +1,99 @@
+---
+# improved_ha_setup.yml
+- name: Improved High Availability Setup for Kubernetes Control Plane
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_api_port: 6443
+  
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - haproxy
+          - keepalived
+        state: present
+        update_cache: yes
+    
+    # Fix 1: Configure HAProxy to listen on all interfaces
+    - name: Configure HAProxy with reliable binding
+      template:
+        src: templates/improved_haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        mode: '0644'
+        validate: 'haproxy -c -f %s'
+      register: haproxy_config
+    
+    # Fix 2: Ensure Keepalived config is valid
+    - name: Configure Keepalived with correct VIP setup
+      template:
+        src: templates/improved_keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+        mode: '0644'
+      register: keepalived_config
+    
+    # Fix 3: Add systemd dependency
+    - name: Create systemd override directory
+      file:
+        path: /etc/systemd/system/haproxy.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Ensure HAProxy starts after Keepalived
+      copy:
+        dest: /etc/systemd/system/haproxy.service.d/override.conf
+        content: |
+          [Unit]
+          After=keepalived.service
+          Requires=network-online.target
+        mode: '0644'
+      register: systemd_override
+    
+    - name: Reload systemd configurations
+      systemd:
+        daemon_reload: yes
+      when: systemd_override is changed
+    
+    # Fix 4: Reliable service restart
+    - name: Restart Keepalived
+      systemd:
+        name: keepalived
+        state: restarted
+        enabled: yes
+      when: keepalived_config.changed
+    
+    - name: Wait for VIP to be established
+      wait_for:
+        timeout: 5
+      when: keepalived_config.changed or inventory_hostname == 'k8s-cp-01'
+    
+    - name: Restart HAProxy
+      systemd:
+        name: haproxy
+        state: restarted
+        enabled: yes
+      when: haproxy_config.changed or systemd_override.changed
+    
+    # Verification steps
+    - name: Check Keepalived status
+      shell: "systemctl status keepalived"
+      register: keepalived_status
+      changed_when: false
+      failed_when: false
+    
+    - name: Show Keepalived status
+      debug:
+        msg: "{{ keepalived_status.stdout_lines }}"
+    
+    - name: Check HAProxy status
+      shell: "systemctl status haproxy"
+      register: haproxy_status
+      changed_when: false
+      failed_when: false
+    
+    - name: Show HAProxy status
+      debug:
+        msg: "{{ haproxy_status.stdout_lines }}"
