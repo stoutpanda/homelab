@@ -1,0 +1,49 @@
+---
+- name: Fix Keepalived Configuration
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Stop Keepalived service
+      service:
+        name: keepalived
+        state: stopped
+      
+    - name: Get network interface name
+      shell: "ip -br addr | grep -w '10.8.18' | awk '{print $1}'"
+      register: network_interface
+      changed_when: false
+      
+    - name: Display detected network interface
+      debug:
+        msg: "Detected network interface: {{ network_interface.stdout }}"
+      
+    - name: Create improved Keepalived configuration
+      template:
+        src: templates/keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: '0644'
+      vars:
+        interface_name: "{{ network_interface.stdout }}"
+        vip_address: "10.8.18.2"
+        node_state: "{{ 'MASTER' if inventory_hostname == 'k8s-cp-01' else 'BACKUP' }}"
+        node_priority: "{{ '101' if inventory_hostname == 'k8s-cp-01' else ('100' if inventory_hostname == 'k8s-cp-02' else '99') }}"
+      
+    - name: Start Keepalived service
+      service:
+        name: keepalived
+        state: started
+        enabled: yes
+      
+    - name: Check Keepalived status
+      shell: "systemctl status keepalived | grep Active"
+      register: keepalived_status
+      changed_when: false
+      failed_when: false
+      
+    - name: Display Keepalived status
+      debug:
+        msg: "{{ keepalived_status.stdout }}"

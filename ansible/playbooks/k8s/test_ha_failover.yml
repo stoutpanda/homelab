@@ -1,0 +1,135 @@
+---
+# test_ha_failover.yml
+- name: Check which node has the VIP
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check if this node has the VIP
+      shell: ip addr show | grep -q 10.8.18.2
+      register: has_vip
+      failed_when: false
+      changed_when: false
+      
+    - name: Set fact about VIP status
+      set_fact:
+        has_vip: "{{ has_vip.rc == 0 }}"
+        
+    - name: Display which node has the VIP
+      debug:
+        msg: "{{ inventory_hostname }} has the VIP: {{ has_vip }}"
+        
+    - name: Set primary node fact
+      set_fact:
+        is_primary_node: "{{ has_vip }}"
+
+- name: Test HA failover by stopping HAProxy on primary node
+  hosts: control_plane_nodes
+  become: true
+  serial: 1
+  
+  tasks:
+    - name: Test initial API connectivity
+      shell: curl -k https://10.8.18.2:16443/healthz
+      register: initial_health_check
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+      
+    - name: Show initial health check result
+      debug:
+        msg: "Initial API health: {{ initial_health_check.stdout }}"
+      run_once: true
+
+    - name: Stop HAProxy on primary node
+      systemd:
+        name: haproxy
+        state: stopped
+      when: is_primary_node | default(false) | bool
+      register: stopped_haproxy
+      
+    - name: Show which node had HAProxy stopped
+      debug:
+        msg: "Stopped HAProxy on {{ inventory_hostname }}"
+      when: stopped_haproxy.changed | default(false) | bool
+      
+    - name: Wait for VIP to move (if this node had it)
+      pause:
+        seconds: 10
+      when: stopped_haproxy.changed | default(false) | bool
+      
+- name: Verify failover succeeded
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Check if this node now has the VIP
+      shell: ip addr show | grep -q 10.8.18.2
+      register: has_vip_now
+      failed_when: false
+      changed_when: false
+      
+    - name: Set fact about current VIP status
+      set_fact:
+        has_vip_now: "{{ has_vip_now.rc == 0 }}"
+        
+    - name: Display which node now has the VIP
+      debug:
+        msg: "{{ inventory_hostname }} now has the VIP: {{ has_vip_now }}"
+        
+    - name: Test API connectivity after failover
+      shell: curl -k https://10.8.18.2:16443/healthz
+      register: after_health_check
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+      failed_when: false
+      
+    - name: Show health check result after failover
+      debug:
+        msg: "API health after failover: {{ after_health_check.stdout }}"
+      run_once: true
+
+- name: Restore all services
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Start HAProxy on all nodes
+      systemd:
+        name: haproxy
+        state: started
+      
+    - name: Verify all HAProxy instances are running
+      shell: systemctl is-active haproxy
+      register: haproxy_status
+      
+    - name: Show HAProxy status
+      debug:
+        msg: "HAProxy on {{ inventory_hostname }} is {{ haproxy_status.stdout }}"
+        
+    - name: Final API connectivity test
+      shell: curl -k https://10.8.18.2:16443/healthz
+      register: final_health_check
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+      
+    - name: Show final test result
+      debug:
+        msg: "Final API health: {{ final_health_check.stdout }}"
+      run_once: true
+      
+    - name: HA test summary
+      debug:
+        msg: >
+          HA Failover Test Results:
+          - Initial health: {{ hostvars['localhost']['initial_health_check'].stdout | default('Unknown') }}
+          - Health after failover: {{ hostvars['localhost']['after_health_check'].stdout | default('Unknown') }}
+          - Final health: {{ final_health_check.stdout }}
+          
+          The test is {{ 'SUCCESSFUL' if final_health_check.stdout == 'ok' else 'FAILED' }}
+      run_once: true

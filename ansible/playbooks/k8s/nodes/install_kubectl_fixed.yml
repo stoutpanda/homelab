@@ -1,0 +1,99 @@
+---
+# First play: Fetch the admin.conf from the control plane
+- name: Get admin.conf from control plane
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Fetch admin.conf from control plane
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: /tmp/admin.conf
+        flat: yes
+
+# Second play: Install kubectl and configure on admin node
+- name: Install kubectl on admin node
+  hosts: admin_nodes
+  become: true
+  gather_facts: true
+
+  vars:
+    kubernetes_version: "1.33"  # Using just the minor version as per docs
+
+  tasks:
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Kubernetes GPG key
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Set proper permissions for keyring
+      file:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        mode: '0644'
+
+    - name: Add Kubernetes apt repository
+      shell: echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+      args:
+        creates: /etc/apt/sources.list.d/kubernetes.list
+
+    - name: Set proper permissions for repo list
+      file:
+        path: /etc/apt/sources.list.d/kubernetes.list
+        mode: '0644'
+
+    - name: Update apt package index after adding repo
+      apt:
+        update_cache: yes
+
+    - name: Install kubectl
+      apt:
+        name: kubectl
+        state: present
+
+    - name: Create .kube directory
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0755'
+
+    - name: Ensure control plane nodes are in /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "10.8.18.86 k8s-cp-01"
+        state: present
+
+    - name: Copy admin.conf to kubeconfig
+      copy:
+        src: /tmp/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+
+    - name: Update kubeconfig to use the HA endpoint
+      become_user: k8sadmin
+      shell: kubectl config set-cluster kubernetes --server=https://10.8.18.2:16443 --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config

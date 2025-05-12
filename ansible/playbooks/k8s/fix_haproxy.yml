@@ -1,0 +1,80 @@
+---
+- name: Fix HAProxy Configuration
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check HAProxy configuration syntax
+      shell: haproxy -c -f /etc/haproxy/haproxy.cfg
+      register: haproxy_check
+      changed_when: false
+      failed_when: false
+      
+    - name: Display HAProxy configuration check results
+      debug:
+        msg: "{{ haproxy_check.stdout }}"
+        
+    - name: Check HAProxy configuration file
+      slurp:
+        src: /etc/haproxy/haproxy.cfg
+      register: haproxy_config_file
+      
+    - name: Display HAProxy configuration
+      debug:
+        msg: "{{ haproxy_config_file.content | b64decode }}"
+        
+    - name: Create simplified HAProxy configuration
+      copy:
+        dest: /etc/haproxy/haproxy.cfg
+        content: |
+          global
+              log /dev/log local0
+              log /dev/log local1 notice
+              daemon
+              maxconn 2000
+              user haproxy
+              group haproxy
+
+          defaults
+              log global
+              mode tcp
+              option tcplog
+              option dontlognull
+              retries 3
+              timeout connect 5000
+              timeout client 50000
+              timeout server 50000
+
+          frontend kubernetes-frontend
+              bind 0.0.0.0:16443
+              mode tcp
+              option tcplog
+              default_backend kubernetes-backend
+
+          backend kubernetes-backend
+              mode tcp
+              option tcp-check
+              balance roundrobin
+              server k8s-cp-01 10.8.18.86:6443 check fall 3 rise 2
+              server k8s-cp-02 10.8.18.87:6443 check fall 3 rise 2
+              server k8s-cp-03 10.8.18.88:6443 check fall 3 rise 2
+        mode: '0644'
+      
+    - name: Restart HAProxy service
+      service:
+        name: haproxy
+        state: restarted
+        enabled: yes
+      failed_when: false
+      register: haproxy_restart
+      
+    - name: Check if HAProxy started successfully
+      shell: systemctl status haproxy
+      register: haproxy_status
+      changed_when: false
+      failed_when: false
+      
+    - name: Display HAProxy status after restart
+      debug:
+        msg: "{{ haproxy_status.stdout_lines }}"
