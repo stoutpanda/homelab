@@ -1,0 +1,154 @@
+---
+# troubleshoot_ha_setup.yml
+- name: Troubleshoot and repair HA setup for Kubernetes control plane
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_api_port: 6443
+    k8s_ha_port: 16443
+    force_reconfigure: false  # Set to true to force reconfiguration regardless of current state
+  
+  tasks:
+    - name: Check current services status
+      block:
+        - name: Check Keepalived status
+          shell: systemctl status keepalived
+          register: keepalived_status
+          changed_when: false
+          failed_when: false
+          
+        - name: Check HAProxy status
+          shell: systemctl status haproxy
+          register: haproxy_status
+          changed_when: false
+          failed_when: false
+          
+        - name: Check HAProxy configuration syntax
+          shell: haproxy -c -f /etc/haproxy/haproxy.cfg
+          register: haproxy_syntax
+          changed_when: false
+          failed_when: false
+        
+        - name: Display current status
+          debug:
+            msg:
+              - "Keepalived active: {{ 'yes' if 'Active: active (running)' in keepalived_status.stdout else 'no' }}"
+              - "HAProxy active: {{ 'yes' if 'Active: active (running)' in haproxy_status.stdout else 'no' }}"
+              - "HAProxy config valid: {{ 'yes' if haproxy_syntax.rc == 0 else 'no' }}"
+    
+    - name: Detect network interface
+      shell: "ip -br addr | grep -w '10.8.18' | awk '{print $1}'"
+      register: network_interface
+      changed_when: false
+    
+    - name: Display detected network interface
+      debug:
+        msg: "Detected network interface: {{ network_interface.stdout }}"
+    
+    # Fix HAProxy configuration if needed
+    - name: Reconfigure HAProxy
+      block:
+        - name: Apply standardized HAProxy configuration
+          template:
+            src: templates/standard_haproxy.cfg.j2
+            dest: /etc/haproxy/haproxy.cfg
+            mode: '0644'
+            validate: 'haproxy -c -f %s'
+          register: haproxy_fix
+        
+        - name: Create systemd override directory
+          file:
+            path: /etc/systemd/system/haproxy.service.d
+            state: directory
+            mode: '0755'
+    
+        - name: Ensure HAProxy starts after Keepalived
+          copy:
+            dest: /etc/systemd/system/haproxy.service.d/override.conf
+            content: |
+              [Unit]
+              After=keepalived.service
+              Requires=network-online.target
+            mode: '0644'
+          register: systemd_override
+        
+        - name: Reload systemd configurations
+          systemd:
+            daemon_reload: yes
+          when: systemd_override is changed
+      when: haproxy_syntax.rc != 0 or force_reconfigure
+    
+    # Fix Keepalived configuration
+    - name: Reconfigure Keepalived
+      block:
+        - name: Apply standardized Keepalived configuration
+          template:
+            src: templates/standard_keepalived.conf.j2
+            dest: /etc/keepalived/keepalived.conf
+            mode: '0644'
+          vars:
+            interface_name: "{{ network_interface.stdout | default(ansible_default_ipv4.interface) }}"
+          register: keepalived_fix
+      when: "'Active: active (running)' not in keepalived_status.stdout or force_reconfigure"
+    
+    # Restart services in correct order
+    - name: Restart services
+      block:
+        - name: Stop both services
+          systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - haproxy
+            - keepalived
+          
+        - name: Start Keepalived first
+          systemd:
+            name: keepalived
+            state: started
+            enabled: yes
+          
+        - name: Wait for VIP to be established
+          wait_for:
+            timeout: 3
+          
+        - name: Start HAProxy
+          systemd:
+            name: haproxy
+            state: started
+            enabled: yes
+      when: haproxy_fix is defined and haproxy_fix.changed or 
+            keepalived_fix is defined and keepalived_fix.changed or 
+            force_reconfigure
+    
+    # Verify fix worked
+    - name: Verify services after fix
+      block:
+        - name: Verify Keepalived is running
+          shell: systemctl is-active keepalived
+          register: keepalived_active
+          changed_when: false
+          failed_when: false
+          
+        - name: Verify HAProxy is running
+          shell: systemctl is-active haproxy
+          register: haproxy_active
+          changed_when: false
+          failed_when: false
+          
+        - name: Check for VIP assignment
+          shell: "ip addr show | grep {{ k8s_api_vip }}"
+          register: vip_check
+          changed_when: false
+          failed_when: false
+          
+        - name: Display final status
+          debug:
+            msg:
+              - "Keepalived: {{ keepalived_active.stdout }}"
+              - "HAProxy: {{ haproxy_active.stdout }}"
+              - "VIP {{ 'is active' if vip_check.rc == 0 else 'is not active' }} on this node"
+              - "Node role: {{ 'MASTER' if inventory_hostname == 'k8s-cp-01' else 'BACKUP' }}"

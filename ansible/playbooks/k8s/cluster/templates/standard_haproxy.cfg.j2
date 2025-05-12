@@ -1,0 +1,31 @@
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+    maxconn 2000
+    user haproxy
+    group haproxy
+
+defaults
+    log global
+    mode tcp
+    option tcplog
+    option dontlognull
+    retries 3
+    timeout connect 5000
+    timeout client 50000
+    timeout server 50000
+
+frontend kubernetes-frontend
+    bind 0.0.0.0:{{ k8s_ha_port }}
+    mode tcp
+    option tcplog
+    default_backend kubernetes-backend
+
+backend kubernetes-backend
+    mode tcp
+    option tcp-check
+    balance roundrobin
+    server k8s-cp-01 10.8.18.86:{{ k8s_api_port }} check fall 3 rise 2
+    server k8s-cp-02 10.8.18.87:{{ k8s_api_port }} check fall 3 rise 2
+    server k8s-cp-03 10.8.18.88:{{ k8s_api_port }} check fall 3 rise 2

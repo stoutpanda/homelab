@@ -1,0 +1,33 @@
+global_defs {
+  router_id LVS_DEVEL
+  vrrp_skip_check_adv_addr
+  vrrp_garp_interval 0
+  vrrp_gna_interval 0
+  script_user root
+  enable_script_security
+}
+
+vrrp_script check_haproxy {
+  script "/usr/bin/systemctl is-active haproxy"
+  interval 2
+  weight -10
+  user root
+}
+
+vrrp_instance VI_1 {
+  state {{ 'MASTER' if inventory_hostname == 'k8s-cp-01' else 'BACKUP' }}
+  interface {{ ansible_default_ipv4.interface }}
+  virtual_router_id 51
+  priority {{ '101' if inventory_hostname == 'k8s-cp-01' else ('100' if inventory_hostname == 'k8s-cp-02' else '99') }}
+  advert_int 1
+  authentication {
+    auth_type PASS
+    auth_pass kubernetes
+  }
+  virtual_ipaddress {
+    {{ k8s_api_vip }}/24
+  }
+  track_script {
+    check_haproxy
+  }
+}
