@@ -407,7 +407,7 @@ defaults
     timeout server 50000
 
 frontend kubernetes-frontend
-    bind 10.8.18.1:6443
+    bind 0.0.0.0:16443
     mode tcp
     option tcplog
     default_backend kubernetes-backend
@@ -448,7 +448,7 @@ vrrp_instance VI_1 {
         auth_pass kubernetes
     }
     virtual_ipaddress {
-        10.8.18.1/27
+        10.8.18.2/27
     }
     track_script {
         check_haproxy
@@ -478,7 +478,7 @@ vrrp_instance VI_1 {
         auth_pass kubernetes
     }
     virtual_ipaddress {
-        10.8.18.1/27
+        10.8.18.2/27
     }
     track_script {
         check_haproxy
@@ -508,7 +508,7 @@ vrrp_instance VI_1 {
         auth_pass kubernetes
     }
     virtual_ipaddress {
-        10.8.18.1/27
+        10.8.18.2/27
     }
     track_script {
         check_haproxy
@@ -527,7 +527,7 @@ sudo systemctl enable keepalived
 ### 9.4 Update kubeconfig to Use the VIP
 
 ```bash
-kubectl config set-cluster kubernetes --server=https://10.8.18.1:6443
+kubectl config set-cluster kubernetes --server=https://10.8.18.2:16443
 ```
 
 ## 10. Automating with Ansible

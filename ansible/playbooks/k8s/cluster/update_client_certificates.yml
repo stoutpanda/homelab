@@ -1,0 +1,235 @@
+---
+# update_client_certificates.yml
+- name: Update client certificates for secure VIP connection
+  hosts: k8s-cp-01  # Only need to run this on one control plane node
+  become: true
+  gather_facts: true
+  
+  vars:
+    temp_dir: /tmp/k8s-certs
+    cert_expiry_days: 3650  # 10 years validity
+  
+  tasks:
+    - name: Create temporary directory
+      file:
+        path: "{{ temp_dir }}"
+        state: directory
+        mode: '0755'
+      
+    - name: Backup existing client certificates and configuration
+      shell: |
+        mkdir -p /etc/kubernetes/backup-certs-{{ ansible_date_time.date }}
+        # Backup CA certificates
+        cp -a /etc/kubernetes/pki/ca.* /etc/kubernetes/backup-certs-{{ ansible_date_time.date }}/
+        # Backup kubelet-related certificates
+        cp -a /etc/kubernetes/kubelet.conf /etc/kubernetes/backup-certs-{{ ansible_date_time.date }}/
+        # Backup admin certificates
+        cp -a /etc/kubernetes/admin.conf /etc/kubernetes/backup-certs-{{ ansible_date_time.date }}/
+      args:
+        creates: /etc/kubernetes/backup-certs-{{ ansible_date_time.date }}/ca.crt
+    
+    # Extract the current CA certificate and CSR information
+    - name: Get current CA certificate details
+      shell: |
+        openssl x509 -in /etc/kubernetes/pki/ca.crt -text > {{ temp_dir }}/ca_details.txt
+      args:
+        creates: "{{ temp_dir }}/ca_details.txt"
+    
+    # Create a script to update the CA configuration
+    - name: Create update script
+      copy:
+        dest: "{{ temp_dir }}/update_ca.sh"
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          
+          # Export variable needed for openssl
+          export RANDFILE={{ temp_dir }}/.rnd
+          
+          # Create a configuration file for CA
+          cat > {{ temp_dir }}/ca-config.conf << EOF
+          [req]
+          distinguished_name = req_distinguished_name
+          req_extensions = v3_ca
+          [ req_distinguished_name ]
+          [ v3_ca ]
+          subjectKeyIdentifier=hash
+          authorityKeyIdentifier=keyid:always,issuer:always
+          basicConstraints = CA:true
+          keyUsage = keyCertSign, cRLSign, digitalSignature
+          subjectAltName = @alt_names
+          [ alt_names ]
+          DNS.1 = kubernetes
+          DNS.2 = kubernetes.default
+          DNS.3 = kubernetes.default.svc
+          DNS.4 = kubernetes.default.svc.cluster.local
+          DNS.5 = k8s-cp-01
+          DNS.6 = k8s-cp-02
+          DNS.7 = k8s-cp-03
+          IP.1 = 10.96.0.1
+          IP.2 = 10.8.18.86
+          IP.3 = 10.8.18.87
+          IP.4 = 10.8.18.88
+          IP.5 = 10.8.18.2
+          EOF
+          
+          # Make a backup of original CA files
+          cp /etc/kubernetes/pki/ca.{crt,key} {{ temp_dir }}/
+          
+          # Create a CSR from the existing CA key
+          openssl req -new -key {{ temp_dir }}/ca.key -subj "/CN=kubernetes-ca" -out {{ temp_dir }}/ca.csr -config {{ temp_dir }}/ca-config.conf
+          
+          # Self-sign the CSR to create new CA certificate with VIP in SAN
+          openssl x509 -req -in {{ temp_dir }}/ca.csr -signkey {{ temp_dir }}/ca.key -out {{ temp_dir }}/ca.crt -days {{ cert_expiry_days }} -extensions v3_ca -extfile {{ temp_dir }}/ca-config.conf
+          
+          # Verify the new certificate
+          openssl x509 -in {{ temp_dir }}/ca.crt -text -noout
+          
+          # Replace CA certificate in the kubernetes directory
+          cp {{ temp_dir }}/ca.crt /etc/kubernetes/pki/ca.crt
+          
+          # Update kubeconfig with the new CA
+          kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.crt --embed-certs=true
+          
+          echo "CA certificate has been updated and kubeconfig has been configured with the new CA"
+    
+    - name: Execute the update script
+      shell: "{{ temp_dir }}/update_ca.sh"
+      register: update_ca
+    
+    - name: Display CA update result
+      debug:
+        msg: "{{ update_ca.stdout_lines }}"
+    
+    - name: Wait for API server to restart
+      wait_for:
+        host: "{{ hostvars['k8s-cp-01']['ansible_host'] }}"
+        port: 6443
+        timeout: 180
+    
+    - name: Wait for API server to stabilize
+      pause:
+        seconds: 30
+    
+    - name: Restart API server on all control plane nodes
+      shell: |
+        # Backup the manifest
+        cp /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/kube-apiserver.yaml.bak
+        
+        # Move manifest out to cause pod deletion
+        mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+        
+        # Wait for API server pod to terminate
+        sleep 10
+        
+        # Move manifest back to cause pod recreation with new certificate
+        mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+    
+    # Update kubeconfig files on all control plane nodes
+    - name: Copy CA certificate to user's directory
+      copy:
+        src: /etc/kubernetes/pki/ca.crt
+        dest: /home/k8sadmin/.kube/ca.crt
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0644'
+    
+    - name: Update kubeconfig with new CA certificate (secure)
+      become_user: k8sadmin
+      shell: |
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        kubectl config set-cluster kubernetes --certificate-authority=/home/k8sadmin/.kube/ca.crt --embed-certs=true
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=false
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+    
+    - name: Verify secure connection to Kubernetes API server using VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_check
+      
+    - name: Display kubectl check result
+      debug:
+        msg: "{{ kubectl_check.stdout_lines }}"
+        
+    # Cleanup
+    - name: Cleanup temporary files
+      file:
+        path: "{{ temp_dir }}"
+        state: absent
+      when: kubectl_check.rc == 0
+
+# Update client certificates on other control plane nodes
+- name: Copy updated certificates to other control plane nodes
+  hosts: k8s-cp-02,k8s-cp-03
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Create .kube directory for user
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+        
+    - name: Copy CA certificate from first control plane node
+      copy:
+        src: /etc/kubernetes/pki/ca.crt
+        dest: /etc/kubernetes/pki/ca.crt
+        mode: '0644'
+        remote_src: false
+      delegate_to: k8s-cp-01
+      become: true
+        
+    - name: Copy CA certificate to user's directory
+      copy:
+        src: /etc/kubernetes/pki/ca.crt
+        dest: /home/k8sadmin/.kube/ca.crt
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0644'
+    
+    - name: Restart API server pod
+      shell: |
+        # Backup the manifest
+        cp /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/kube-apiserver.yaml.bak
+        
+        # Move manifest out to cause pod deletion
+        mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+        
+        # Wait for API server pod to terminate
+        sleep 10
+        
+        # Move manifest back to cause pod recreation with new certificate
+        mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+        
+    - name: Update kubeconfig with new CA certificate (secure)
+      become_user: k8sadmin
+      shell: |
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        kubectl config set-cluster kubernetes --certificate-authority=/home/k8sadmin/.kube/ca.crt --embed-certs=true
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=false
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+
+# Verify all nodes
+- name: Verify secure connections from all nodes
+  hosts: control_plane_nodes
+  become: true
+  become_user: k8sadmin
+  gather_facts: false
+  
+  tasks:
+    - name: Verify secure connection to Kubernetes API server using VIP
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_check
+      
+    - name: Display kubectl check result
+      debug:
+        msg: "{{ kubectl_check.stdout_lines }}"

@@ -1,0 +1,81 @@
+---
+# update_api_server_certificates.yml
+- name: Update API server certificates to include VIP
+  hosts: k8s-cp-01  # Only run on the first control plane node
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Create a backup of API server certificate files
+      shell: |
+        mkdir -p /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}
+        cp -a /etc/kubernetes/pki/apiserver* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/
+      args:
+        creates: /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/apiserver.crt
+      
+    - name: Delete the existing API server certificate and key
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/kubernetes/pki/apiserver.crt
+        - /etc/kubernetes/pki/apiserver.key
+    
+    - name: Generate new API server certificate with VIP included
+      shell: |
+        kubeadm init phase certs apiserver \
+        --apiserver-cert-extra-sans={{ k8s_api_vip }}
+      args:
+        creates: /etc/kubernetes/pki/apiserver.crt
+    
+    - name: Restart API server pod
+      shell: |
+        # Backup the manifest
+        cp /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/kube-apiserver.yaml.bak
+        
+        # Move manifest out to cause pod deletion
+        mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+        
+        # Wait for API server pod to terminate
+        sleep 10
+        
+        # Move manifest back to cause pod recreation with new certificate
+        mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+      
+    - name: Wait for API server to be available
+      wait_for:
+        host: "{{ hostvars['k8s-cp-01']['ansible_host'] }}"
+        port: 6443
+        timeout: 180
+    
+    - name: Wait for API server to stabilize
+      pause:
+        seconds: 30
+    
+    # Verify the new certificate includes the VIP
+    - name: Check new certificate
+      shell: |
+        openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text | grep -A1 "Subject Alternative Name" | grep IP
+      register: cert_check
+      
+    - name: Display certificate information
+      debug:
+        msg: "{{ cert_check.stdout_lines }}"
+      
+    # Update kubeconfig to use the VIP with TLS verification 
+    - name: Update kubeconfig to use the VIP 
+      become_user: k8sadmin
+      shell: kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      
+    - name: Verify connection to Kubernetes API server using VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_check
+      
+    - name: Display kubectl check result
+      debug:
+        msg: "{{ kubectl_check.stdout_lines }}"

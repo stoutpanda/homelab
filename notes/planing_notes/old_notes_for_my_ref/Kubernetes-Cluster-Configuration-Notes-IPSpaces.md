@@ -156,7 +156,7 @@ Ubiquiti Flex 2.5G (10.0.1.80)
 
 |Service|VLAN|IP Address|Purpose|
 |---|---|---|---|
-|K8s API Server VIP|18|10.8.18.1/27|HA endpoint for K8s API|
+|K8s API Server VIP|18|10.8.18.2/27|HA endpoint for K8s API|
 
 ###Port Configuration
 

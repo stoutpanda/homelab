@@ -1,0 +1,134 @@
+---
+# sync_k8s_ca_certificates.yml - Synchronize CA certificates across all control plane nodes
+- name: Synchronize CA certificates for secure communication
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Create temporary directory
+      file:
+        path: /tmp/k8s-certs-sync
+        state: directory
+        mode: '0755'
+    
+    - name: Create compressed archive of all CA certificates
+      shell: |
+        tar -czf /tmp/k8s-certs-sync/ca-certs.tar.gz \
+        /etc/kubernetes/pki/ca.* \
+        /etc/kubernetes/pki/sa.* \
+        /etc/kubernetes/pki/front-proxy-ca.* \
+        /etc/kubernetes/pki/etcd/ca.*
+      args:
+        creates: /tmp/k8s-certs-sync/ca-certs.tar.gz
+    
+    - name: Fetch CA certificates archive
+      fetch:
+        src: /tmp/k8s-certs-sync/ca-certs.tar.gz
+        dest: /tmp/k8s-certs-sync/
+        flat: yes
+      
+- name: Distribute CA certificates to other control plane nodes
+  hosts: k8s-cp-02:k8s-cp-03
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Create temporary directory
+      file:
+        path: /tmp/k8s-certs-sync
+        state: directory
+        mode: '0755'
+    
+    - name: Copy CA certificates archive
+      copy:
+        src: /tmp/k8s-certs-sync/ca-certs.tar.gz
+        dest: /tmp/k8s-certs-sync/ca-certs.tar.gz
+        mode: '0644'
+    
+    - name: Backup existing certificates
+      shell: |
+        mkdir -p /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}
+        cp -a /etc/kubernetes/pki/ca.* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/ 2>/dev/null || true
+        cp -a /etc/kubernetes/pki/sa.* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/ 2>/dev/null || true
+        cp -a /etc/kubernetes/pki/front-proxy-ca.* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/ 2>/dev/null || true
+        cp -a /etc/kubernetes/pki/etcd/ca.* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/ 2>/dev/null || true
+      args:
+        creates: /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/ca.crt
+    
+    - name: Extract CA certificates
+      shell: |
+        tar -xzf /tmp/k8s-certs-sync/ca-certs.tar.gz -C /
+      
+    - name: Restart API server
+      shell: |
+        # Backup the manifest
+        cp /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/kube-apiserver.yaml.bak
+        
+        # Move manifest out to cause pod deletion
+        mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+        
+        # Wait for API server pod to terminate
+        sleep 10
+        
+        # Move manifest back to cause pod recreation with new certificate
+        mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+    
+    - name: Verify CA certificate
+      shell: |
+        openssl x509 -in /etc/kubernetes/pki/ca.crt -text -noout | grep Issuer
+      register: cert_check
+      
+    - name: Display certificate information
+      debug:
+        msg: "{{ cert_check.stdout }}"
+
+- name: Update kubeconfig on all control plane nodes
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Wait for API server to be available
+      wait_for:
+        host: "{{ hostvars[inventory_hostname]['ansible_host'] }}"
+        port: 6443
+        timeout: 180
+    
+    - name: Wait for API servers to stabilize
+      pause:
+        seconds: 30
+    
+    - name: Update kubeconfig for k8sadmin user
+      become_user: k8sadmin
+      shell: |
+        # Set the server to VIP
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        # Set certificate verification settings
+        kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.crt --embed-certs=true
+        # Ensure insecure flag is disabled
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=false
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+    
+    - name: Test secure connectivity
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_test
+      
+    - name: Display test result
+      debug:
+        msg: "{{ kubectl_test.stdout_lines }}"
+
+- name: Clean up temporary files
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Remove temporary directory
+      file:
+        path: /tmp/k8s-certs-sync
+        state: absent

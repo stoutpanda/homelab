@@ -49,6 +49,12 @@ Two standardized templates are used:
 - Can force reconfiguration with the `force_reconfigure` variable
 - Verifies services after fixes are applied
 
+#### Certificate Management: `sync_k8s_ca_certificates.yml`
+- Synchronizes CA certificates across all control plane nodes
+- Configures secure API server access through the VIP
+- Updates kubeconfig to use the VIP with proper certificate validation
+- Restarts API servers to apply certificate changes
+
 ## Usage
 
 ### Initial Setup
@@ -56,6 +62,15 @@ Two standardized templates are used:
 ```bash
 cd ansible
 ansible-playbook playbooks/k8s/cluster/setup_ha_control_plane_standardized.yml
+```
+
+### Certificate Synchronization
+
+If you need to fix certificate validation issues:
+
+```bash
+cd ansible
+ansible-playbook playbooks/k8s/cluster/sync_k8s_ca_certificates.yml
 ```
 
 ### Troubleshooting
@@ -97,6 +112,29 @@ Requires=network-online.target
 - Keepalived uses `/usr/bin/systemctl is-active haproxy` to check HAProxy status
 - HAProxy checks each control plane node with TCP health checks
 
+### Certificate Configuration
+
+For proper certificate validation with the VIP:
+
+1. The Kubernetes API server certificates must include the VIP in Subject Alternative Names (SANs)
+2. The kubeadm-config.yaml template includes the VIP in the certSANs section:
+   ```yaml
+   apiServer:
+     certSANs:
+       - {{ hostvars['k8s-cp-01']['ansible_host'] }}
+       - {{ hostvars['k8s-cp-02']['ansible_host'] }}
+       - {{ hostvars['k8s-cp-03']['ansible_host'] }}
+       - {{ k8s_api_vip }}  # Include VIP in certificates
+       - localhost
+       - 127.0.0.1
+   ```
+3. Kubeconfig must be updated to use the VIP with proper certificate validation:
+   ```bash
+   kubectl config set-cluster kubernetes --server=https://10.8.18.2:16443
+   kubectl config set-cluster kubernetes --certificate-authority=/etc/kubernetes/pki/ca.crt --embed-certs=true
+   kubectl config set-cluster kubernetes --insecure-skip-tls-verify=false
+   ```
+
 ## Verification
 
 You can verify your HA setup is working by:
@@ -116,6 +154,16 @@ You can verify your HA setup is working by:
    kubectl --kubeconfig=/home/k8sadmin/.kube/config get nodes
    ```
 
+4. Verifying secure TLS connection without certificate warnings:
+   ```
+   curl --cacert /etc/kubernetes/pki/ca.crt https://10.8.18.2:16443/healthz
+   ```
+
+5. Checking the certificate includes the VIP:
+   ```
+   echo | openssl s_client -showcerts -connect 10.8.18.2:16443 2>/dev/null | openssl x509 -text | grep -A1 'Subject Alternative Name'
+   ```
+
 ## Troubleshooting Common Issues
 
 1. **VIP not assigned to any node**
@@ -129,3 +177,9 @@ You can verify your HA setup is working by:
 3. **API server unreachable through VIP**
    - Verify HAProxy is running: `systemctl status haproxy`
    - Check Kubernetes API server status on all nodes
+
+4. **TLS certificate validation issues**
+   - Verify the VIP is included in API server certificate SANs
+   - Check if CA certificates are consistent across all nodes
+   - If needed, run `sync_k8s_ca_certificates.yml` to fix certificate issues
+   - Use `kubectl config view` to verify insecure-skip-tls-verify is set to false

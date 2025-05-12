@@ -1,0 +1,161 @@
+---
+# secure_vip_connection.yml - A simplified approach to secure VIP connections
+- name: Configure control plane nodes to securely use the VIP
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    # First, make sure the VIP is included in all API server certificates
+    - name: Check current API server certificate
+      shell: openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text | grep -A1 "Subject Alternative Name" | grep IP
+      register: cert_check
+      changed_when: false
+      
+    - name: Display current certificate IPs
+      debug:
+        msg: "{{ cert_check.stdout }}"
+    
+    # Check if VIP is already in certificate
+    - name: Check if VIP is in the certificate
+      set_fact:
+        vip_in_cert: "{{ cert_check.stdout is regex('.*IP Address:' + k8s_api_vip|regex_escape() + '.*') }}"
+    
+    - name: Show VIP certificate status
+      debug:
+        msg: "VIP ({{ k8s_api_vip }}) is {{ 'already' if vip_in_cert else 'NOT' }} in certificate"
+    
+    # Update the API server certificates if needed
+    - name: Update API server certificate to include VIP
+      block:
+        - name: Backup API server certificates
+          shell: |
+            mkdir -p /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}
+            cp -a /etc/kubernetes/pki/apiserver* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/
+          args:
+            creates: "/etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/apiserver.crt"
+        
+        - name: Delete existing API server certificate
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /etc/kubernetes/pki/apiserver.crt
+            - /etc/kubernetes/pki/apiserver.key
+        
+        - name: Generate new API server certificate with VIP
+          shell: |
+            kubeadm init phase certs apiserver \
+            --apiserver-cert-extra-sans={{ k8s_api_vip }}
+          args:
+            creates: /etc/kubernetes/pki/apiserver.crt
+        
+        - name: Restart API server
+          shell: |
+            # Backup the manifest
+            cp /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/kube-apiserver.yaml.bak
+            
+            # Move manifest out to cause pod deletion
+            mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+            
+            # Wait for API server pod to terminate
+            sleep 10
+            
+            # Move manifest back to cause pod recreation with new certificate
+            mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+      when: not vip_in_cert
+    
+    # Wait for API servers to stabilize if any were restarted
+    - name: Wait for API server to be available
+      wait_for:
+        host: "{{ hostvars[inventory_hostname]['ansible_host'] }}"
+        port: 6443
+        timeout: 180
+      when: not vip_in_cert
+    
+    - name: Wait for API servers to stabilize
+      pause:
+        seconds: 30
+      when: not vip_in_cert
+    
+    # Update kubeconfig to use VIP with secure verification
+    - name: Update kubeconfig to use VIP with insecure flag first
+      become_user: k8sadmin
+      shell: |
+        # Set the server to VIP with HA port
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        # Disable cert verification temporarily
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+    
+    # Test connectivity with insecure flag
+    - name: Test connectivity with insecure flag
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_insecure
+      
+    - name: Display insecure test result
+      debug:
+        msg: "{{ kubectl_insecure.stdout_lines }}"
+    
+    # Try to set up secure connection
+    - name: Get API server certificate
+      shell: |
+        openssl s_client -showcerts -connect {{ k8s_api_vip }}:{{ k8s_ha_port }} </dev/null 2>/dev/null | openssl x509 -outform PEM > /home/k8sadmin/.kube/apiserver.crt
+      args:
+        creates: /home/k8sadmin/.kube/apiserver.crt
+      
+    - name: Set ownership of certificate
+      file:
+        path: /home/k8sadmin/.kube/apiserver.crt
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0644'
+    
+    - name: Update kubeconfig with VIP certificate
+      become_user: k8sadmin
+      shell: |
+        # Set the server to VIP
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        # Use the downloaded certificate
+        kubectl config set-cluster kubernetes --certificate-authority=/home/k8sadmin/.kube/apiserver.crt --embed-certs=true
+        # Disable insecure flag
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=false
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      
+    # Test secure connectivity
+    - name: Test secure connectivity
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_secure
+      failed_when: false
+      
+    - name: Display secure test result
+      debug:
+        msg: "Secure connection {{ 'successful' if kubectl_secure.rc == 0 else 'failed - reverting to insecure' }}"
+    
+    # Revert to insecure if secure fails
+    - name: Revert to insecure if secure fails
+      become_user: k8sadmin
+      shell: kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      when: kubectl_secure.rc != 0
+      
+    # Final test
+    - name: Final connectivity test
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_final
+      
+    - name: Display final test result
+      debug:
+        msg: "{{ kubectl_final.stdout_lines }}"

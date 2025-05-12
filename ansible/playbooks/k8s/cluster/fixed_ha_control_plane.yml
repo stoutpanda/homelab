@@ -1,24 +1,25 @@
 ---
-# setup_ha_control_plane_standardized.yml
+# fixed_ha_control_plane.yml
 - name: Set up high availability for Kubernetes control plane
   hosts: control_plane_nodes
   become: true
   gather_facts: true
   
   vars:
-    k8s_api_vip: "10.8.18.2"
-    k8s_api_port: 6443 # Standard Kubernetes API port
-    k8s_ha_port: 16443 # HAProxy port for frontend
+    k8s_api_port: 6443    # Standard Kubernetes API port
+    k8s_ha_port: 16443    # HAProxy port for frontend - important for certificate validation
+    k8s_api_vip: 10.8.18.2  # Virtual IP for the Kubernetes API server
   
   tasks:
-    - name: Install required packages
+    - name: Install HAProxy and Keepalived
       apt:
         name:
           - haproxy
           - keepalived
         state: present
         update_cache: yes
-    
+      
+    # Use HAProxy config that binds to all interfaces on k8s_ha_port
     - name: Configure HAProxy
       template:
         src: templates/standard_haproxy.cfg.j2
@@ -26,15 +27,16 @@
         mode: '0644'
         validate: 'haproxy -c -f %s'
       register: haproxy_config
-    
-    - name: Configure Keepalived
+      
+    # Use improved Keepalived config
+    - name: Create Keepalived configuration
       template:
         src: templates/standard_keepalived.conf.j2
         dest: /etc/keepalived/keepalived.conf
         mode: '0644'
       register: keepalived_config
-    
-    # Ensure systemd dependencies are set correctly
+      
+    # Add systemd dependency to ensure proper startup order
     - name: Create systemd override directory
       file:
         path: /etc/systemd/system/haproxy.service.d
@@ -74,27 +76,8 @@
         name: haproxy
         state: restarted
         enabled: yes
-      when: haproxy_config.changed or systemd_override.changed
     
     # Verification steps
-    - name: Check Keepalived status
-      shell: "systemctl is-active keepalived"
-      register: keepalived_status
-      changed_when: false
-      failed_when: false
-    
-    - name: Check HAProxy status
-      shell: "systemctl is-active haproxy"
-      register: haproxy_status
-      changed_when: false
-      failed_when: false
-    
-    - name: Show service status
-      debug:
-        msg: 
-          - "Keepalived: {{ keepalived_status.stdout }}"
-          - "HAProxy: {{ haproxy_status.stdout }}"
-    
     - name: Check for VIP assignment
       shell: "ip addr show | grep {{ k8s_api_vip }}"
       register: vip_check
@@ -105,7 +88,8 @@
       debug:
         msg: "VIP {{ 'is active' if vip_check.rc == 0 else 'is not active' }} on this node"
     
-    - name: Update kubeconfig to use the VIP (on first CP node only)
+    # Important: Update kubeconfig to use the VIP with k8s_ha_port (16443) and disable certificate verification
+    - name: Update kubeconfig to use the VIP (on k8s-cp-01 only)
       become_user: k8sadmin
       shell: |
         kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
@@ -115,7 +99,12 @@
       when: inventory_hostname == 'k8s-cp-01'
       register: kubeconfig_update
       
-    - name: Verify connection to Kubernetes API server using VIP (on first CP node only)
+    - name: Display kubeconfig update result
+      debug:
+        msg: "{{ kubeconfig_update.stdout if kubeconfig_update is defined and kubeconfig_update.stdout is defined else 'No update needed' }}"
+      when: inventory_hostname == 'k8s-cp-01'
+      
+    - name: Verify connection to Kubernetes API server using VIP
       become_user: k8sadmin
       shell: kubectl get nodes
       environment:
@@ -124,7 +113,7 @@
       when: inventory_hostname == 'k8s-cp-01'
       failed_when: false
       
-    - name: Display kubectl check result (on first CP node only)
+    - name: Display kubectl check result
       debug:
         msg: "{{ kubectl_check.stdout_lines }}"
       when: inventory_hostname == 'k8s-cp-01'

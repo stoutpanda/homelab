@@ -11,6 +11,14 @@ apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: {{ kubernetes_version }}
 controlPlaneEndpoint: "{{ control_plane_endpoint }}"
+apiServer:
+  certSANs:
+    - {{ hostvars['k8s-cp-01']['ansible_host'] }}
+    - {{ hostvars['k8s-cp-02']['ansible_host'] }}
+    - {{ hostvars['k8s-cp-03']['ansible_host'] }}
+    - {{ k8s_api_vip }}  # Include VIP in certificates
+    - localhost
+    - 127.0.0.1
 networking:
   podSubnet: {{ pod_network_cidr }}
   serviceSubnet: {{ service_cidr }}

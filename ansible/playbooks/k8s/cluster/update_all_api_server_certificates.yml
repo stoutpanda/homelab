@@ -1,0 +1,121 @@
+---
+# update_all_api_server_certificates.yml
+- name: Update API server certificates on all control plane nodes
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Create a backup of API server certificate files
+      shell: |
+        mkdir -p /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}
+        cp -a /etc/kubernetes/pki/apiserver* /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/
+      args:
+        creates: /etc/kubernetes/pki/backup-{{ ansible_date_time.date }}/apiserver.crt
+      
+    - name: Delete the existing API server certificate and key
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/kubernetes/pki/apiserver.crt
+        - /etc/kubernetes/pki/apiserver.key
+    
+    - name: Generate new API server certificate with VIP included
+      shell: |
+        kubeadm init phase certs apiserver \
+        --apiserver-cert-extra-sans={{ k8s_api_vip }}
+      args:
+        creates: /etc/kubernetes/pki/apiserver.crt
+    
+    - name: Restart API server pod
+      shell: |
+        # Backup the manifest
+        cp /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/kube-apiserver.yaml.bak
+        
+        # Move manifest out to cause pod deletion
+        mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+        
+        # Wait for API server pod to terminate
+        sleep 10
+        
+        # Move manifest back to cause pod recreation with new certificate
+        mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
+      
+    - name: Check new certificate
+      shell: |
+        openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text | grep -A1 "Subject Alternative Name" | grep IP
+      register: cert_check
+      
+    - name: Display certificate information
+      debug:
+        msg: "{{ cert_check.stdout_lines }}"
+
+- name: Wait for all API servers to be available and verify VIP connection
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Wait for API servers to be available
+      wait_for:
+        host: "{{ hostvars[item]['ansible_host'] }}"
+        port: 6443
+        timeout: 180
+      with_items:
+        - k8s-cp-01
+        - k8s-cp-02
+        - k8s-cp-03
+    
+    - name: Wait for API servers to stabilize
+      pause:
+        seconds: 30
+    
+    # Use insecure connection initially to avoid certificate issues during transition
+    - name: Update kubeconfig to use the VIP with insecure flag
+      become_user: k8sadmin
+      shell: |
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      
+    - name: Verify connection to Kubernetes API server using VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_check
+      
+    - name: Display kubectl check result
+      debug:
+        msg: "{{ kubectl_check.stdout_lines }}"
+      
+    # Now try with secure connection as certificates should be updated
+    - name: Update kubeconfig to use the VIP with secure verification
+      become_user: k8sadmin
+      shell: |
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=false
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      
+    - name: Verify secure connection to Kubernetes API server using VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_check_secure
+      failed_when: false
+      
+    - name: Display secure connection result
+      debug:
+        msg: "{{ kubectl_check_secure.stdout_lines if kubectl_check_secure.rc == 0 else 'Secure connection failed. Using insecure connection for now.' }}"
+      
+    # If secure connection fails, revert to insecure for now
+    - name: Revert to insecure connection if needed
+      become_user: k8sadmin
+      shell: kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      when: kubectl_check_secure.rc != 0
