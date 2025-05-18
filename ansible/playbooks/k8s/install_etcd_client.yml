@@ -1,0 +1,30 @@
+# install_etcd_client.yml - Simplified approach using apt
+- name: Install etcdctl for etcd verification
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Install etcd-client using apt
+      apt:
+        name: etcd-client
+        state: present
+        update_cache: yes
+      
+    - name: Verify etcdctl installation
+      command: which etcdctl
+      register: etcdctl_path
+      changed_when: false
+      
+    - name: Display etcdctl path
+      debug:
+        msg: "etcdctl path: {{ etcdctl_path.stdout }}"
+      
+    - name: Check etcdctl version
+      shell: ETCDCTL_API=3 etcdctl version
+      register: etcdctl_version
+      changed_when: false
+      
+    - name: Display etcdctl version
+      debug:
+        msg: "{{ etcdctl_version.stdout_lines }}"
