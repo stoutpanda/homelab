@@ -1,0 +1,15 @@
+---
+# MS-01 specific configuration
+enable_vPro: true
+nvme_devices:
+  os_drive: "/dev/nvme0n1"
+  ceph_drives: 
+    - "/dev/nvme1n1"
+    - "/dev/nvme2n1"
+ceph_osd_devices:
+  - device: "/dev/nvme1n1"
+    db_device: "/dev/nvme1n1"
+    wal_device: "/dev/nvme1n1"
+  - device: "/dev/nvme2n1"
+    db_device: "/dev/nvme2n1"
+    wal_device: "/dev/nvme2n1"
