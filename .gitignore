@@ -100,7 +100,7 @@ Desktop.ini
 
 # Project-specific
 host_vars/
-group_vars/
+# group_vars/   # <-- Commented out to allow group_vars to be tracked by git
 ansible/backups/
 **/backups/
 
@@ -116,7 +116,7 @@ ansible/backups/
 
 # Inventory and host_vars/group_vars that may contain secrets
 host_vars/
-group_vars/
+# group_vars/   # <-- Commented out to allow group_vars to be tracked by git
 
 # SSH and security artifacts
 *.pub
