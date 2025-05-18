@@ -354,3 +354,66 @@ ansible control_plane_nodes -m shell -a "grep -i keepalived /var/log/syslog | ta
    - Set up Ingress controller
    - Configure external access to services
    - Deploy initial applications
+
+
+   # Kubernetes Homelab Progress - May 18, 2025
+
+## High Availability Verification
+
+Today we successfully verified the high availability setup of our Kubernetes control plane:
+
+### ✅ HAProxy and Keepalived Verification
+- Confirmed HAProxy is running on all three control plane nodes
+- Verified Keepalived is properly managing the VIP (10.8.18.2)
+- Observed correct failover behavior in Keepalived logs with appropriate priority assignments
+- Confirmed the VIP is currently assigned to k8s-cp-01 (highest priority node)
+
+### ✅ etcd Cluster Verification
+- Installed etcd-client using apt for verification purposes
+- Confirmed all three etcd members are in the "started" state:
+  - k8s-cp-01 (ID: 6b8eff73f14c67da)
+  - k8s-cp-02 (ID: b13237175a2cf2f6)
+  - k8s-cp-03 (ID: 87050630ec4bdf17)
+- Verified etcd cluster health with successful proposal commits
+- Confirmed k8s-cp-01 is currently the cluster leader
+- Observed reasonable database size (8.0 MB) and healthy Raft indices
+
+### ✅ Certificate Distribution Verification
+- Verified CA certificates are consistent across all nodes (Issuer: CN=kubernetes)
+- Confirmed API server certificates include the VIP (10.8.18.2) in Subject Alternative Names on all nodes
+- Verified each API server certificate includes the node's IP and all required DNS names
+- Successfully tested secure connections with certificate verification enabled
+
+### ✅ TFTP and Netboot.xyz Configuration
+- Identified and resolved Docker container networking issues with TFTP data transfers
+- Reconfigured the netboot.xyz container to use host networking mode, eliminating port mapping issues
+- Successfully verified TFTP file transfers of boot images
+- Confirmed worker node can retrieve boot files via TFTP
+
+### ✅ Network Configuration for PXE Boot
+- Added necessary firewall rules to allow traffic between K8sAdmin network (VLAN 16) and Internal network (VLAN 1)
+- Configured proper routing between VLANs for PXE boot traffic
+- Verified connectivity for both TFTP control port (69) and data transfer ports (30000-30010)
+
+### Current Status
+| Component            | Status    | Notes                                    |
+|----------------------|-----------|------------------------------------------|
+| Control Plane Nodes  | ✅ Ready   | All 3 nodes running and in Ready status  |
+| Container Runtime    | ✅ Ready   | containerd 2.0.0 installed and running   |
+| CNI Plugin           | ✅ Ready   | Cilium 1.17.3 installed and operational  |
+| API Server           | ✅ Ready   | Accessible via VIP with secure TLS       |
+| Control Plane HA     | ✅ Ready   | HAProxy/Keepalived properly configured   |
+| Worker Nodes         | 🔜 Planned | Next phase: Ubuntu installation          |
+
+## Next Steps
+
+1. **Worker Node Setup**:
+   - Install Ubuntu 25.04 on MS-01 nodes
+   - Configure networking for all required VLANs
+   - Install container runtime (containerd)
+   - Install Kubernetes components
+   - Join nodes to the cluster
+
+2. **Storage Setup**:
+   - Configure Ceph storage on worker nodes
+   - Set up persistent volumes and storage classes
