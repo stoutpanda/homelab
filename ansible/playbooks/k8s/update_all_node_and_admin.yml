@@ -1,7 +1,7 @@
 ---
 # update_nodes.yml
 - name: Update all Kubernetes nodes
-  hosts: raspberry_pis
+  hosts: all
   become: true
   gather_facts: true
   
