@@ -4,19 +4,19 @@
   hosts: k8s_cluster
   become: true
   gather_facts: true
-  
+
   tasks:
     - name: Set hostname
       hostname:
         name: "{{ inventory_hostname }}"
-      
+
     - name: Update /etc/hosts with node's own entry
       lineinfile:
         path: /etc/hosts
         line: "127.0.1.1 {{ inventory_hostname }}"
         regexp: "^127.0.1.1"
         state: present
-        
+
     # Detect node type
     - name: Set node type facts
       set_fact:
@@ -32,7 +32,7 @@
       register: interfaces_output
       changed_when: false
       when: is_ms01
-      
+
     - name: Identify I226-LM interface (MS-01 only)
       shell: |
         find /sys/class/net -name eth* -o -name enp* | sort | xargs -I{} sh -c 'if grep -q I226-LM /sys/class/net/{}/device/uevent 2>/dev/null; then echo {}; fi' | sed 's/\/sys\/class\/net\///'
@@ -40,7 +40,7 @@
       changed_when: false
       failed_when: false
       when: is_ms01
-      
+
     - name: Use alternative method if I226-LM not found
       shell: |
         ethtool -i $(ip -br link | grep -E 'enp[0-9]' | awk '{print $1}') 2>/dev/null | grep -B1 I226-LM | head -1 | awk '{print $2}'
@@ -48,12 +48,12 @@
       changed_when: false
       failed_when: false
       when: is_ms01 and (mgmt_interface.stdout_lines|length == 0)
-      
+
     - name: Combine interface detection results
       set_fact:
         mgmt_if: "{{ mgmt_interface.stdout_lines|first if mgmt_interface.stdout_lines else mgmt_interface_alt.stdout if mgmt_interface_alt.stdout else 'enp9s0' }}"
       when: is_ms01
-      
+
     - name: Identify I226-V interface (MS-01 only)
       shell: |
         find /sys/class/net -name eth* -o -name enp* | sort | xargs -I{} sh -c 'if grep -q I226-V /sys/class/net/{}/device/uevent 2>/dev/null; then echo {}; fi' | sed 's/\/sys\/class\/net\///'
@@ -61,7 +61,7 @@
       changed_when: false
       failed_when: false
       when: is_ms01
-      
+
     - name: Use alternative method if I226-V not found
       shell: |
         ethtool -i $(ip -br link | grep -E 'enp[0-9]' | awk '{print $1}') 2>/dev/null | grep -B1 I226-V | head -1 | awk '{print $2}'
@@ -69,12 +69,12 @@
       changed_when: false
       failed_when: false
       when: is_ms01 and (second_interface.stdout_lines|length == 0)
-      
+
     - name: Combine interface detection results for I226-V
       set_fact:
         second_if: "{{ second_interface.stdout_lines|first if second_interface.stdout_lines else second_interface_alt.stdout if second_interface_alt.stdout else 'enp8f0' }}"
       when: is_ms01
-      
+
     - name: Identify X710 SFP+ interfaces (MS-01 only)
       shell: |
         find /sys/class/net -name eth* -o -name enp* | sort | xargs -I{} sh -c 'if grep -q X710 /sys/class/net/{}/device/uevent 2>/dev/null; then echo {}; fi' | sed 's/\/sys\/class\/net\///'
@@ -82,7 +82,7 @@
       changed_when: false
       failed_when: false
       when: is_ms01
-      
+
     - name: Use alternative method if X710 not found
       shell: |
         ip -br link | grep -E 'enp[0-9]' | grep -v "$(echo {{ mgmt_if }})" | grep -v "$(echo {{ second_if }})" | awk '{print $1}'
@@ -90,12 +90,12 @@
       changed_when: false
       failed_when: false
       when: is_ms01 and (sfp_interfaces.stdout_lines|length == 0)
-      
+
     - name: Combine interface detection results for SFP+
       set_fact:
         sfp_ifs: "{{ sfp_interfaces.stdout_lines if sfp_interfaces.stdout_lines else sfp_interfaces_alt.stdout_lines }}"
       when: is_ms01
-      
+
     - name: Display identified interfaces (MS-01 only)
       debug:
         msg: |
@@ -103,7 +103,7 @@
           Secondary interface (I226-V): {{ second_if }}
           SFP+ interfaces: {{ sfp_ifs }}
       when: is_ms01
-      
+
     # Create netplan for Raspberry Pi nodes
     - name: Create netplan configuration for Raspberry Pi nodes
       copy:
@@ -125,7 +125,7 @@
         mode: '0644'
       register: netplan_config_rpi
       when: is_raspberry_pi
-      
+
     # Create netplan for MS-01 worker nodes
     - name: Create netplan configuration for MS-01 worker nodes
       copy:
@@ -161,7 +161,7 @@
         mode: '0644'
       register: netplan_config_ms01
       when: is_ms01
-      
+
     # Add hosts entries for all nodes
     - name: Add K8s cluster hosts to /etc/hosts
       blockinfile:
@@ -171,26 +171,25 @@
           {{ control_plane_gateway }} control-pane-gateway
           {{ admin_gateway }} admin-network-gateway
 
-  
           # Control plane nodes
           10.8.18.86 k8s-cp-01
           10.8.18.87 k8s-cp-02
           10.8.18.88 k8s-cp-03
-          
+
           # Worker nodes
           10.8.18.90 k8s-ms01-node-01
           10.8.18.91 k8s-ms01-node-02
           10.8.16.90 k8s-ms01-node-01-mgmt
           10.8.16.91 k8s-ms01-node-02-mgmt
-          
+
           # Admin node
           10.8.16.85 k8s-admin
-          
+
           # Virtual IP for HA control plane
           {{ k8s_api_vip }} k8s-apiserver
         marker: "# {mark} KUBERNETES NODES"
         state: present
-      
+
     # Apply netplan configuration
     - name: Check netplan syntax
       command: netplan generate
@@ -208,23 +207,23 @@
         delay: 5
         timeout: 60
       when: (netplan_config_rpi is defined and netplan_config_rpi.changed and netplan_generate.rc == 0) or (netplan_config_ms01 is defined and netplan_config_ms01.changed and netplan_generate.rc == 0)
-      
+
     # Verification steps
     - name: Show effective IP configuration
       shell: "{% if is_raspberry_pi %}ip addr show eth0{% else %}ip -br addr | grep -v lo{% endif %}"
       register: ip_config
       changed_when: false
-      
+
     - name: Display IP configuration
       debug:
         msg: "{{ ip_config.stdout_lines }}"
-      
+
     - name: Test DNS resolution
       command: nslookup cloudflare.com
       register: dns_test
       changed_when: false
       failed_when: false
-      
-- name: Display DNS test results
-  debug:
-    msg: "{{ dns_test.stdout_lines }}"
+
+    - name: Display DNS test results
+      debug:
+        msg: "{{ dns_test.stdout_lines }}"
