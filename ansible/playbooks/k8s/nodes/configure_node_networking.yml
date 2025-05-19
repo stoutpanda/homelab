@@ -185,7 +185,6 @@
           
           # Admin node
           10.8.16.85 k8s-admin
-          10.8.18.85 k8s-admin-cp  # If this IP exists
           
           # Virtual IP for HA control plane
           {{ k8s_api_vip }} k8s-apiserver

@@ -41,13 +41,23 @@
       blockinfile:
         path: /etc/hosts
         block: |
-          # UDM-Pro Gateway
-          {{ admin_gateway }} udm-gateway
+          # Gateways
+          {{ control_plane_gateway }} control-pane-gateway
+          {{ admin_gateway }} admin-network-gateway
           
           # Control plane nodes
           10.8.18.86 k8s-cp-01
           10.8.18.87 k8s-cp-02
           10.8.18.88 k8s-cp-03
+          
+          # Worker nodes
+          10.8.18.90 k8s-ms01-node-01
+          10.8.18.91 k8s-ms01-node-02
+          10.8.16.90 k8s-ms01-node-01-mgmt
+          10.8.16.91 k8s-ms01-node-02-mgmt
+          
+          # Admin node
+          10.8.16.85 k8s-admin
           
           # Virtual IP for HA control plane
           {{ k8s_api_vip }} k8s-apiserver
