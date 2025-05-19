@@ -8,7 +8,7 @@ ansible_become_method: sudo
 
 # Network configuration
 control_plane_gateway: 10.8.16.1  # UDM-Pro interface is the gateway
-admin_gateway: 10.8.16.1 # UDM-Pro interface is the gateway
+admin_gateway: 10.8.16.1  # UDM-Pro interface is the gateway
 pod_network_cidr: "10.8.28.0/23"
 service_cidr: "10.8.38.0/24"
 control_plane_endpoint: "{{ k8s_api_vip }}:{{ k8s_ha_port }}"  # Use VIP for HA control plane
@@ -23,11 +23,18 @@ cilium_version: "1.17.3"
 containerd_version: "2.0.0"
 etcd_version: "3.5.9"
 
+# Load balancer network
+loadbalancer_cidr: "10.8.58.0/27"
 
-# Storage network configuration
-storage_network_cidr: "10.8.48.0/27"
+# Network interface configuration
+# Correct subnet masks from UniFi controller
+mgmt_subnet_mask: "/24"      # 10.8.16.0/24
+control_subnet_mask: "/24"   # 10.8.18.0/24
+pod_subnet_mask: "/23"       # 10.8.28.0/23
+service_subnet_mask: "/24"   # 10.8.38.0/24
+storage_subnet: "10.8.48.0"
+storage_subnet_mask: "/24"   # 10.8.48.0/24
 enable_jumbo_frames: true
 storage_mtu: 9000
 
-# Load balancer network
-loadbalancer_cidr: "10.8.58.0/27"
+
