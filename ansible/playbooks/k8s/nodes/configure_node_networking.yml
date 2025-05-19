@@ -17,13 +17,12 @@
         regexp: "^127.0.1.1"
         state: present
 
-    # Detect node type
     - name: Set node type facts
       set_fact:
-        is_control_plane: "{{ inventory_hostname in groups['control_plane_nodes'] }}"
-        is_worker: "{{ inventory_hostname in groups['worker_nodes'] }}"
-        is_raspberry_pi: "{{ inventory_hostname in groups['raspberry_pis'] }}"
-        is_ms01: "{{ inventory_hostname in groups['ms-01s'] }}"
+        is_control_plane: "{{ inventory_hostname in (groups['control_plane_nodes'] | default([])) }}"
+        is_worker: "{{ inventory_hostname in (groups['worker_nodes'] | default([])) }}"
+        is_raspberry_pi: "{{ inventory_hostname in (groups['raspberry_pis'] | default([])) }}"
+        is_ms01: "{{ inventory_hostname in (groups['ms-01s'] | default([])) }}"
 
     # Interface detection for MS-01 worker nodes
     - name: Get network interface names (MS-01 only)
