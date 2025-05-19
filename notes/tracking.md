@@ -417,3 +417,77 @@ Today we successfully verified the high availability setup of our Kubernetes con
 2. **Storage Setup**:
    - Configure Ceph storage on worker nodes
    - Set up persistent volumes and storage classes
+
+# Kubernetes Homelab Project Tracking - Updated May 19, 2025
+
+## Current Status Overview
+
+### Completed Tasks
+- ✅ Established basic infrastructure and networking setup
+- ✅ Configured UDM-PRO with appropriate VLANs and routing
+- ✅ Set up SSH keys and vault for secure management
+- ✅ Created k8sadmin user across all nodes
+- ✅ Installed Ubuntu on worker nodes using vPro
+- ✅ Initial Kubernetes setup on control plane nodes
+- ✅ Initial high availability setup with HAProxy and Keepalived
+
+### Current Issues
+- ⚠️ Control plane network configuration broke during playbook updates
+- ⚠️ k8s-cp-01 was upgraded to Ubuntu 25.04 and is no longer part of the HA cluster
+- ⚠️ Network configuration errors: 10.8.16.1 incorrectly defined as control plane gateway
+- ⚠️ MS-01 worker node networking not functioning correctly
+- ⚠️ Improper netplan configuration causing YAML validation errors
+
+### Next Steps (Prioritized)
+1. **Fix Control Plane Networking**:
+   - Correct gateway configuration for Raspberry Pi nodes (should use 10.8.18.1 not 10.8.16.1)
+   - Fix netplan configurations to ensure proper connectivity
+   - Restore HA configuration for control plane nodes
+
+2. **Upgrade Control Plane Nodes**:
+   - Complete do-release-upgrade to Ubuntu 25.04 for remaining control plane nodes
+   - Ensure consistent OS versions across all control plane nodes
+
+3. **Restore Kubernetes Control Plane**:
+   - Repair etcd cluster
+   - Reconfigure Cilium CNI if needed
+   - Verify HA functionality with all control plane nodes
+
+4. **Fix MS-01 Worker Node Networking**:
+   - Properly identify network interfaces
+   - Create correct bond configuration with appropriate YAML structure
+   - Establish proper connectivity across all required networks
+
+5. **Join Worker Nodes to Cluster**:
+   - Continue with worker node setup once control plane is stable
+   - Configure container runtime and Kubernetes components on worker nodes
+   - Join nodes to the cluster
+
+## Detailed Technical Notes
+
+### Network Gateway Issues
+- Control plane nodes (Raspberry Pi) should use 10.8.18.1 as gateway, not 10.8.16.1
+- The UDM-PRO provides gateway services for both networks but was misconfigured in playbooks
+
+### MS-01 Interface Configuration
+- MS-01 worker nodes have complex interface naming (enp2s0f0np0, enp2s0f1np1, etc.)
+- Netplan YAML format requires careful indentation and structure
+- Bond configuration was failing due to YAML syntax errors and interface misidentification
+
+### High Availability Status
+- Control plane node k8s-cp-01 upgraded to Ubuntu 25.04 and fell out of HA configuration
+- VIP (10.8.18.2) no longer functioning across all nodes
+- HAProxy and Keepalived configuration may need to be reapplied
+
+### Kubernetes Component Status
+- Etcd cluster likely in a degraded state due to network issues
+- Cilium CNI may need reconfiguration after network fixes
+- Control plane components might need reconfiguration
+
+## Recovery Plan
+
+1. Start with fixing the most critical component: control plane network connectivity
+2. Apply OS upgrades systematically to ensure consistency
+3. Restore Kubernetes HA control plane functionality
+4. Address worker node networking with properly tested configurations
+5. Complete worker node integration once foundation is stable
