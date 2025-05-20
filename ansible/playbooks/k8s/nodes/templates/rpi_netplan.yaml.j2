@@ -1,0 +1,15 @@
+# Ansible-managed Kubernetes network configuration for Raspberry Pi
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ interface }}:
+      dhcp4: no
+      dhcp6: no
+      addresses:
+        - {{ ip_address }}
+      routes:
+        - to: default
+          via: {{ gateway }}
+      nameservers:
+        addresses: [{% for ns in nameservers %}{{ ns }}{% if not loop.last %}, {% endif %}{% endfor %}]

@@ -1,0 +1,43 @@
+# Ansible-managed Kubernetes network configuration for MS-01
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {% if mgmt_interface is defined and mgmt_interface != omit %}
+    {{ mgmt_interface }}:
+      dhcp4: no
+      dhcp6: no
+      addresses:
+        - {{ mgmt_ip }}
+      routes:
+        - to: default
+          via: {{ gateway }}
+      nameservers:
+        addresses: [{% for ns in nameservers %}{{ ns }}{% if not loop.last %}, {% endif %}{% endfor %}]
+    {% endif %}
+
+    {% if second_interface is defined and second_interface != omit and second_interface != mgmt_interface %}
+    {{ second_interface }}:
+      dhcp4: no
+      dhcp6: no
+      optional: true
+    {% endif %}
+
+  {% if bond_interfaces is defined and bond_interfaces | length > 0 %}
+  bonds:
+    bond0:
+      interfaces:
+        {% for interface in bond_interfaces %}
+        - {{ interface }}
+        {% endfor %}
+      parameters:
+        mode: 802.3ad
+        lacp-rate: fast
+        mii-monitor-interval: 100
+        transmit-hash-policy: layer2+3
+      mtu: 9000
+      addresses:
+        {% for ip in bond_ips %}
+        - {{ ip }}
+        {% endfor %}
+  {% endif %}

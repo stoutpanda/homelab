@@ -491,3 +491,47 @@ Today we successfully verified the high availability setup of our Kubernetes con
 3. Restore Kubernetes HA control plane functionality
 4. Address worker node networking with properly tested configurations
 5. Complete worker node integration once foundation is stable
+
+# Kubernetes Homelab Project Tracking - Updated May 19, 2025 (Evening)
+
+## Network Configuration Modernization
+
+### Completed Today
+- ✅ Replaced deprecated shell commands with appropriate Ansible modules
+- ✅ Improved network interface detection using Ansible facts instead of shell commands
+- ✅ Moved inline Jinja2 templates to separate template files for better maintainability
+- ✅ Enhanced error handling with proper block/rescue structure
+- ✅ Improved network verification with more robust connectivity checks
+- ✅ Created template files for netplan configurations:
+  - `fallback_netplan.yaml.j2` - DHCP fallback configuration
+  - `rpi_netplan.yaml.j2` - Raspberry Pi node configuration
+  - `ms01_netplan.yaml.j2` - MS-01 worker node configuration with bonding
+  - `verify_connectivity.sh.j2` - Network verification script
+
+### Key Improvements
+1. **Better Interface Detection**:
+   - Now using `ansible_facts.interfaces` instead of shell commands with grep
+   - More reliable detection of physical vs. virtual interfaces
+   - Improved categorization of interface types (SFP vs. copper)
+
+2. **Enhanced Network Configuration**:
+   - Moved from inline templates to separate template files
+   - Improved YAML structure for netplan configurations
+   - Better variable handling for network parameters
+
+3. **Improved Error Handling**:
+   - Added block/rescue structure for safer network configuration
+   - Better fallback mechanism for network configuration failures
+   - More comprehensive connectivity verification
+
+4. **Modern Module Usage**:
+   - Replaced `warn: false` parameter (deprecated) with proper module structure
+   - Using `ansible.builtin.setup` for fact gathering instead of shell commands
+   - Using `ansible.builtin.slurp` for file content retrieval instead of cat commands
+   - Using `ansible.builtin.uri` for connectivity testing when possible
+
+### Next Steps
+1. **Test the updated playbook** on a single node to verify functionality
+2. **Apply the corrected gateway configuration** (10.8.18.1 instead of 10.8.16.1)
+3. **Verify MS-01 interface detection** works correctly with the new approach
+4. **Document the modernization changes** in project documentation

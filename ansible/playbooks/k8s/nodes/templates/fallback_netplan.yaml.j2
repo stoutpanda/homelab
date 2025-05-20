@@ -1,0 +1,8 @@
+# Ansible-managed fallback configuration
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ primary_interface }}:
+      dhcp4: true
+      dhcp6: false

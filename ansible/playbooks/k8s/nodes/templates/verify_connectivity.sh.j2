@@ -1,0 +1,26 @@
+#!/bin/bash
+# Ansible-managed connectivity verification script
+
+# Wait for network to stabilize
+sleep {{ timeout }}
+
+# Define gateway to ping
+GATEWAY_TO_PING="{{ gateway }}"
+FALLBACK_CONFIG="{{ fallback_config }}"
+
+echo "INFO: Verifying connectivity to gateway $GATEWAY_TO_PING..."
+if ping -c 3 "$GATEWAY_TO_PING"; then
+  echo "INFO: Gateway $GATEWAY_TO_PING is reachable."
+  exit 0
+else
+  echo "ERROR: Gateway $GATEWAY_TO_PING UNREACHABLE after {{ timeout }}s!"
+  echo "ERROR: Attempting to apply fallback Netplan configuration: $FALLBACK_CONFIG"
+  
+  if netplan apply --debug -c "$FALLBACK_CONFIG"; then
+    echo "INFO: Fallback Netplan configuration applied successfully."
+    exit 1
+  else
+    echo "CRITICAL: Failed to apply fallback Netplan configuration. Manual intervention required!"
+    exit 2
+  fi
+fi
