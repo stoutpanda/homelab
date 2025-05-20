@@ -25,10 +25,6 @@
           - k8s_api_vip is defined
         msg: "Required network variables are missing. Please check group_vars/all.yml or host_vars. Ensure masks are like /24 and gateways are correct for each node type."
 
-    - name: Test current connectivity before changes
-      ansible.builtin.ping:
-      register: initial_ping
-
     - name: Record initial network state (ip addr, ip route, netplan configs)
       ansible.builtin.shell:
         cmd: |  # CORRECTED STRUCTURE
@@ -210,8 +206,6 @@
                   - {{ hostvars[inventory_hostname]['ansible_host'] }}{{ control_subnet_mask }}
                 routes:
                   - to: default
-                    via: {{ control_plane_gateway }}
-                  - to: 10.8.16.0/24
                     via: {{ control_plane_gateway }}
                 nameservers:
                   addresses: [{{ control_plane_gateway }}, 1.1.1.1]
