@@ -1,43 +1,70 @@
-# Ansible-managed Kubernetes network configuration for MS-01
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    {% if mgmt_interface is defined and mgmt_interface != omit %}
-    {{ mgmt_interface }}:
-      dhcp4: no
-      dhcp6: no
-      addresses:
-        - {{ mgmt_ip }}
-      routes:
-        - to: default
-          via: {{ gateway }}
-      nameservers:
-        addresses: [{% for ns in nameservers %}{{ ns }}{% if not loop.last %}, {% endif %}{% endfor %}]
-    {% endif %}
+{# ------------------------------------------------------------------- #
+# Ansible managed – DO NOT EDIT BY HAND
+# ------------------------------------------------------------------- #}
 
-    {% if second_interface is defined and second_interface != omit and second_interface != mgmt_interface %}
-    {{ second_interface }}:
-      dhcp4: no
-      dhcp6: no
-      optional: true
-    {% endif %}
+{%- set ethernets = {} -%}
 
-  {% if bond_interfaces is defined and bond_interfaces | length > 0 %}
-  bonds:
-    bond0:
-      interfaces:
-        {% for interface in bond_interfaces %}
-        - {{ interface }}
-        {% endfor %}
-      parameters:
-        mode: 802.3ad
-        lacp-rate: fast
-        mii-monitor-interval: 100
-        transmit-hash-policy: layer2+3
-      mtu: 9000
-      addresses:
-        {% for ip in bond_ips %}
-        - {{ ip }}
-        {% endfor %}
-  {% endif %}
+{%- if mgmt_interface is defined and mgmt_interface != omit -%}
+{%-   set _ = ethernets.update(
+        { mgmt_interface: {
+              'dhcp4'     : False,
+              'dhcp6'     : False,
+              'addresses' : [ mgmt_ip ],
+              'routes'    : [ { 'to': 'default', 'via': gateway } ],
+              'nameservers': { 'addresses': nameservers }
+        }})
+-%}
+{%- endif -%}
+
+{%- if second_interface is defined
+       and second_interface != omit
+       and second_interface != mgmt_interface -%}
+{%-   set _ = ethernets.update(
+        { second_interface: {
+              'dhcp4'  : False,
+              'dhcp6'  : False,
+              'addresses': [ second_if_ip ],
+              'optional': True
+        }})
+-%}
+{%- endif -%}
+
+{%- set bonds = {} -%}
+{%- set vlans = {} -%}
+
+{%- if bond_interfaces is defined and bond_interfaces | length > 0 -%}
+{%-   set _ = bonds.update(
+        { 'bond0': {
+              'interfaces': bond_interfaces,
+              'parameters': {
+                  'mode'                 : '802.3ad',
+                  'lacp-rate'            : 'fast',
+                  'mii-monitor-interval' : 100,
+                  'transmit-hash-policy' : 'layer2+3'
+              },
+              'mtu'      : 9000
+        }})
+-%}
+{%- endif -%}
+
+{%- if vlan_configs is defined and vlan_configs | length > 0 -%}
+{%-   for vlan in vlan_configs -%}
+{%-     set _ = vlans.update(
+            { 'vlan' ~ vlan.id: {
+                  'id'       : vlan.id,
+                  'link'     : vlan.link,
+                  'addresses': vlan.addresses
+            }})
+-%}
+{%-   endfor -%}
+{%- endif -%}
+
+{{ { 'network': {
+        'version' : 2,
+        'renderer': 'networkd',
+        'ethernets': ethernets,
+        'bonds': bonds,
+        'vlans': vlans
+     }}
+   | to_nice_yaml(indent=2, explicit_start=False, width=9999)
+}}

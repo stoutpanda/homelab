@@ -58,11 +58,14 @@
             var: initial_network_state
             verbosity: 1
 
+    # 1. For the Netplan backup directory
     - name: Create backup directory for network configurations
       ansible.builtin.file:
         path: "{{ backup_dir }}"
         state: directory
         mode: '0750'
+        owner: root
+        group: root
 
     - name: Backup current netplan configuration directory
       ansible.builtin.copy:
@@ -71,11 +74,14 @@
         remote_src: true
       ignore_errors: true
 
+    # 2. For the fallback configuration
     - name: Create fallback netplan configuration (DHCP on a primary interface)
       ansible.builtin.template:
         src: templates/fallback_netplan.yaml.j2
         dest: "{{ fallback_file }}"
         mode: '0640'
+        owner: root
+        group: root
       vars:
         primary_interface: >-
           {% if inventory_hostname in groups['raspberry_pis'] %}
@@ -101,7 +107,7 @@
         is_control_plane: "{{ inventory_hostname in groups['control_plane_nodes'] }}"
         is_worker: "{{ inventory_hostname in groups['worker_nodes'] }}"
         is_raspberry_pi: "{{ inventory_hostname in groups['raspberry_pis'] }}"
-        is_ms01: "{{ inventory_hostname in groups['ms-01s'] }}"
+        is_ms01: "{{ inventory_hostname in groups['ms_01s'] }}"
 
     - name: Debug group memberships
       ansible.builtin.debug:
@@ -182,18 +188,14 @@
               {% endif %}
       when: is_raspberry_pi or is_ms01
 
-    # IP Address handling for MS-01 (using ansible_host for last octet)
-    - name: Extract last octet of ansible_host for MS-01 nodes
-      ansible.builtin.set_fact:
-        last_octet: "{{ hostvars[inventory_hostname]['ansible_host'] | ansible.netcommon.ipaddr('host') | regex_replace('^.*\\.', '') }}"
-      when: is_ms01
-
-    # Create netplan for Raspberry Pi nodes
+    # 3. For the Raspberry Pi netplan configuration
     - name: Create netplan configuration for Raspberry Pi nodes
       ansible.builtin.template:
         src: templates/rpi_netplan.yaml.j2
         dest: /etc/netplan/60-k8s-network.yaml
         mode: '0640'
+        owner: root
+        group: root
       register: netplan_config_rpi
       when: is_raspberry_pi
       vars:
@@ -204,27 +206,24 @@
           - "{{ control_plane_gateway }}"
           - "1.1.1.1"
 
-    # Create netplan for MS-01 worker nodes with proper bond/LAG configuration
+    # 4. For the MS-01 netplan configuration
     - name: Create netplan configuration for MS-01 worker nodes with LAG
       ansible.builtin.template:
         src: templates/ms01_netplan.yaml.j2
         dest: /etc/netplan/60-k8s-network.yaml
         mode: '0640'
+        owner: root
+        group: root
       register: netplan_config_ms01
       when: is_ms01 and mgmt_if is defined and mgmt_if != omit
       vars:
         mgmt_interface: "{{ mgmt_if }}"
         second_interface: "{{ second_if | default(omit) }}"
         bond_interfaces: "{{ bond_member_sfp_ifs }}"
-        mgmt_ip: "10.8.16.{{ last_octet }}/24"
         gateway: "{{ admin_gateway }}"
         nameservers:
           - "{{ admin_gateway }}"
           - "1.1.1.1"
-        bond_ips:
-          - "10.8.28.{{ last_octet }}/23"
-          - "10.8.38.{{ last_octet }}/24"
-          - "10.8.48.{{ last_octet }}/24"
 
     - name: Add K8s cluster hosts to /etc/hosts
       ansible.builtin.blockinfile:
@@ -273,6 +272,19 @@
         msg: "{{ debug_generated_netplan_content['content'] | b64decode }}"
       when: debug_generated_netplan_content.content is defined
 
+    - name: Ensure correct permissions on netplan directory and files
+      ansible.builtin.file:
+        path: "/etc/netplan"
+        state: directory
+        mode: "{{ item.mode }}"
+        owner: root
+        group: root
+        recurse: true
+        follow: true
+      loop:
+        - { mode: '0755', type: 'directory' }
+        - { mode: '0600', type: 'file' }
+
     - name: Check netplan syntax
       ansible.builtin.command: netplan generate
       register: netplan_generate_result
@@ -288,6 +300,8 @@
             src: templates/verify_connectivity.sh.j2
             dest: /root/verify_connectivity.sh
             mode: '0755'
+            owner: root
+            group: root
           vars:
             gateway: "{{ admin_gateway if is_ms01 else control_plane_gateway }}"
             timeout: "{{ timeout_seconds }}"
