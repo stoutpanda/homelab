@@ -87,7 +87,7 @@
           {% if inventory_hostname in groups['raspberry_pis'] %}
           {{ pi_interface | default(ansible_facts.interfaces | select('match', '^eth.*|^en.*') | first | default('eth0')) }}
           {% else %}
-          {{ mgmt_if | default(ansible_facts.default_ipv4.interface) | default('enp87s0') }}
+          {{ mgmt_if | default('') | trim | default(ansible_facts.default_ipv4.interface) | default('enp87s0') }}
           {% endif %}
 
     - name: Set hostname
@@ -124,8 +124,7 @@
       block:
         - name: Get all network interfaces
           ansible.builtin.set_fact:
-            all_interfaces_list: >-
-              {{ ansible_facts.interfaces | reject('match', '^lo$|^docker.*|^veth.*|^virbr.*|^br-.*|^bond.*|^dummy.*|^kube-ipvs.*|^ifb.*|^tun.*|^tap.*') | list }}
+            all_interfaces_list: "{{ ansible_facts.interfaces | reject('match', '^lo$|^docker.*|^veth.*|^virbr.*|^br-.*|^bond.*|^dummy.*|^kube-ipvs.*|^ifb.*|^tun.*|^tap.*') | list }}
 
         - name: Display potentially physical interfaces
           ansible.builtin.debug:
@@ -139,23 +138,23 @@
 
         - name: Identify all ENP interfaces for MS-01 nodes
           ansible.builtin.set_fact:
-            all_enp_interfaces_ms01: "{{ all_interfaces_list | select('match', '^enp.*') | list }}"
+            all_enp_interfaces_ms01: "{{ all_interfaces_list | select('match', '^enp.*') | map('trim') | list }}"
           when: is_ms01
 
         - name: Categorize MS-01 ENP interfaces (SFP vs Copper-like)
           ansible.builtin.set_fact:
-            potential_sfp_interfaces_ms01: "{{ all_enp_interfaces_ms01 | select('match', '.*f.*') | list }}"
-            potential_copper_interfaces_ms01: "{{ all_enp_interfaces_ms01 | reject('match', '.*f.*') | list }}"
+            potential_sfp_interfaces_ms01: "{{ all_enp_interfaces_ms01 | select('match', '.*f.*') | map('trim') | list }}"
+            potential_copper_interfaces_ms01: "{{ all_enp_interfaces_ms01 | reject('match', '.*f.*') | map('trim') | list }}"
           when: is_ms01 and all_enp_interfaces_ms01 is defined and all_enp_interfaces_ms01 | length > 0
 
         - name: Assign MS-01 management, secondary, and bond member interfaces
           ansible.builtin.set_fact:
-            mgmt_if: "{{ (potential_copper_interfaces_ms01 | first) | default(omit) }}"
+            mgmt_if: "{{ (potential_copper_interfaces_ms01 | first | default('') | trim | default(omit)) }}"
             second_if: >-
               {% if mgmt_if is defined and mgmt_if != omit %}
-              {{ (potential_copper_interfaces_ms01 | reject('equalto', mgmt_if) | list | first) | default(omit) }}
+              {{ (potential_copper_interfaces_ms01 | reject('equalto', mgmt_if) | list | first | default('') | trim | default(omit)) }}
               {% elif potential_copper_interfaces_ms01 is defined and potential_copper_interfaces_ms01 | length > 1 %}
-              {{ (potential_copper_interfaces_ms01 | list)[1] }}
+              {{ (potential_copper_interfaces_ms01 | list)[1] | trim }}
               {% else %}
               {{ omit }}
               {% endif %}
@@ -217,9 +216,9 @@
       register: netplan_config_ms01
       when: is_ms01 and mgmt_if is defined and mgmt_if != omit
       vars:
-        mgmt_interface: "{{ mgmt_if }}"
-        second_interface: "{{ second_if | default(omit) }}"
-        bond_interfaces: "{{ bond_member_sfp_ifs }}"
+        mgmt_interface: "{{ mgmt_if | trim }}"
+        second_interface: "{{ second_if | trim | default(omit) }}"
+        bond_interfaces: "{{ bond_member_sfp_ifs | map('trim') | list }}"
         gateway: "{{ admin_gateway }}"
         nameservers:
           - "{{ admin_gateway }}"
