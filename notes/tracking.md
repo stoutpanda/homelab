@@ -682,4 +682,4 @@ Bond0 + Jumbo Frames: Working properly
 Status: ✅ PASS
 Single TCP stream hitting expected performance ceiling. Network infrastructure performing optimally for 2-node setup.
 
-
+✅ Complete Ubuntu 25.10 upgrade across all 6 nodes (3 control plane + 2 worker + 1 admin)
