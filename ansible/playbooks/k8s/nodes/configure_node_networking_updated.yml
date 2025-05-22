@@ -24,7 +24,17 @@
           - storage_subnet_mask is defined
           - k8s_api_vip is defined
         msg: "Required network variables are missing. Please check group_vars/all.yml or host_vars. Ensure masks are like /24 and gateways are correct for each node type."
-
+    - name: Install essential network diagnostic tools
+      ansible.builtin.apt:
+        name:
+          - iputils-ping      # ping command
+          - iproute2          # ip command 
+          - dnsutils          # nslookup, dig commands
+          - net-tools         # netstat, ifconfig
+          - ethtool           # ethernet diagnostics
+        state: present
+        update_cache: yes
+      register: network_tools_installed
     - name: Record initial network state
       block:
         - name: Gather network facts
