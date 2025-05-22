@@ -1,4 +1,4 @@
-# modernized_network_config.yml
+# modernized_network_config.yml - Fixed version
 - name: Ultra-safe network configuration for Kubernetes nodes
   hosts: k8s_cluster
   #serial: 1
@@ -58,7 +58,6 @@
             var: initial_network_state
             verbosity: 1
 
-    # 1. For the Netplan backup directory
     - name: Create backup directory for network configurations
       ansible.builtin.file:
         path: "{{ backup_dir }}"
@@ -74,20 +73,53 @@
         remote_src: true
       ignore_errors: true
 
-    # 2. For the fallback configuration
+    - name: Debug primary interface variables for fallback config (MS01 nodes)
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ inventory_hostname }}"
+          - "mgmt_if variable: {{ mgmt_if | default('NOT_DEFINED') }}"
+          - "ansible_facts.default_ipv4.interface: {{ ansible_facts.default_ipv4.interface | default('NOT_AVAILABLE') }}"
+          - "Calculated _primary_interface_name for fallback: {{ ((mgmt_if | default('', true) | trim) or (ansible_facts.default_ipv4.interface | default('', true) | trim) or 'enp87s0') if not (inventory_hostname in groups['raspberry_pis']) else ((pi_interface | default('', true) | trim) or ((ansible_facts.interfaces | select('match', '^eth.*|^en.*') | list | first) | default('', true) | trim) or 'eth0') }}"
+      when: "inventory_hostname.startswith('k8s-ms01-node')"
+
     - name: Create fallback netplan configuration (DHCP on a primary interface)
-      ansible.builtin.template:
-        src: templates/fallback_netplan.yaml.j2
+      ansible.builtin.copy:
         dest: "{{ fallback_file }}"
-        mode: '0640'
+        content: |
+          # Ansible-managed fallback configuration
+          network:
+            version: 2
+            renderer: networkd
+            ethernets:
+              {{ interface_name | trim }}:
+                dhcp4: true
+                dhcp6: false
+        mode: '0600'
         owner: root
         group: root
       vars:
-        primary_interface: >-
+        interface_name: >
           {% if inventory_hostname in groups['raspberry_pis'] %}
-          {{ pi_interface | default(ansible_facts.interfaces | select('match', '^eth.*|^en.*') | first | default('eth0')) }}
+            {% if pi_interface is defined and pi_interface | trim != '' %}
+              {{ pi_interface | trim }}
+            {% elif ansible_facts.interfaces is defined %}
+              {% set eth_interfaces = ansible_facts.interfaces | select('match', '^eth.*|^en.*') | list %}
+              {% if eth_interfaces | length > 0 %}
+                {{ eth_interfaces[0] }}
+              {% else %}
+                eth0
+              {% endif %}
+            {% else %}
+              eth0
+            {% endif %}
           {% else %}
-          {{ mgmt_if | default('') | trim | default(ansible_facts.default_ipv4.interface) | default('enp87s0') }}
+            {% if mgmt_if is defined and mgmt_if | trim != '' %}
+              {{ mgmt_if | trim }}
+            {% elif ansible_facts.default_ipv4 is defined and ansible_facts.default_ipv4.interface is defined %}
+              {{ ansible_facts.default_ipv4.interface }}
+            {% else %}
+              enp87s0
+            {% endif %}
           {% endif %}
 
     - name: Set hostname
@@ -124,7 +156,7 @@
       block:
         - name: Get all network interfaces
           ansible.builtin.set_fact:
-            all_interfaces_list: "{{ ansible_facts.interfaces | reject('match', '^lo$|^docker.*|^veth.*|^virbr.*|^br-.*|^bond.*|^dummy.*|^kube-ipvs.*|^ifb.*|^tun.*|^tap.*') | list }}
+            all_interfaces_list: "{{ ansible_facts.interfaces | reject('match', '^lo$|^docker.*|^veth.*|^virbr.*|^br-.*|^bond.*|^dummy.*|^kube-ipvs.*|^ifb.*|^tun.*|^tap.*') | list }}"
 
         - name: Display potentially physical interfaces
           ansible.builtin.debug:
@@ -143,16 +175,16 @@
 
         - name: Categorize MS-01 ENP interfaces (SFP vs Copper-like)
           ansible.builtin.set_fact:
-            potential_sfp_interfaces_ms01: "{{ all_enp_interfaces_ms01 | select('match', '.*f.*') | map('trim') | list }}"
-            potential_copper_interfaces_ms01: "{{ all_enp_interfaces_ms01 | reject('match', '.*f.*') | map('trim') | list }}"
+            potential_sfp_interfaces_ms01: "{{ all_enp_interfaces_ms01 | select('match', '.*f[0-9].*') | map('trim') | list }}"
+            potential_copper_interfaces_ms01: "{{ all_enp_interfaces_ms01 | reject('match', '.*f[0-9].*') | map('trim') | list }}"
           when: is_ms01 and all_enp_interfaces_ms01 is defined and all_enp_interfaces_ms01 | length > 0
 
         - name: Assign MS-01 management, secondary, and bond member interfaces
           ansible.builtin.set_fact:
-            mgmt_if: "{{ (potential_copper_interfaces_ms01 | first | default('') | trim | default(omit)) }}"
+            mgmt_if: "{{ (potential_copper_interfaces_ms01 | first | default('') | trim) or omit }}"
             second_if: >-
               {% if mgmt_if is defined and mgmt_if != omit %}
-              {{ (potential_copper_interfaces_ms01 | reject('equalto', mgmt_if) | list | first | default('') | trim | default(omit)) }}
+              {{ (potential_copper_interfaces_ms01 | reject('equalto', mgmt_if) | list | first | default('') | trim) or omit }}
               {% elif potential_copper_interfaces_ms01 is defined and potential_copper_interfaces_ms01 | length > 1 %}
               {{ (potential_copper_interfaces_ms01 | list)[1] | trim }}
               {% else %}
@@ -187,7 +219,7 @@
               {% endif %}
       when: is_raspberry_pi or is_ms01
 
-    # 3. For the Raspberry Pi netplan configuration
+    # Create netplan for Raspberry Pi nodes
     - name: Create netplan configuration for Raspberry Pi nodes
       ansible.builtin.template:
         src: templates/rpi_netplan.yaml.j2
@@ -205,7 +237,7 @@
           - "{{ control_plane_gateway }}"
           - "1.1.1.1"
 
-    # 4. For the MS-01 netplan configuration
+    # Create netplan for MS-01 worker nodes with proper bond/LAG configuration
     - name: Create netplan configuration for MS-01 worker nodes with LAG
       ansible.builtin.template:
         src: templates/ms01_netplan.yaml.j2
@@ -219,10 +251,13 @@
         mgmt_interface: "{{ mgmt_if | trim }}"
         second_interface: "{{ second_if | trim | default(omit) }}"
         bond_interfaces: "{{ bond_member_sfp_ifs | map('trim') | list }}"
+        mgmt_ip: "{{ hostvars[inventory_hostname]['mgmt_ip'] }}"
+        second_if_ip: "{{ hostvars[inventory_hostname]['second_if_ip'] }}"
         gateway: "{{ admin_gateway }}"
         nameservers:
           - "{{ admin_gateway }}"
           - "1.1.1.1"
+        vlan_configs: "{{ hostvars[inventory_hostname]['vlan_configs'] | default([]) }}"
 
     - name: Add K8s cluster hosts to /etc/hosts
       ansible.builtin.blockinfile:
@@ -271,18 +306,21 @@
         msg: "{{ debug_generated_netplan_content['content'] | b64decode }}"
       when: debug_generated_netplan_content.content is defined
 
-    - name: Ensure correct permissions on netplan directory and files
+    - name: Ensure correct permissions on netplan directory
       ansible.builtin.file:
         path: "/etc/netplan"
         state: directory
-        mode: "{{ item.mode }}"
+        mode: "0755"
         owner: root
         group: root
-        recurse: true
-        follow: true
-      loop:
-        - { mode: '0755', type: 'directory' }
-        - { mode: '0600', type: 'file' }
+
+    - name: Set correct permissions on netplan configuration file
+      ansible.builtin.file:
+        path: "/etc/netplan/60-k8s-network.yaml"
+        mode: "0600"
+        owner: root
+        group: root
+      when: (netplan_config_rpi is defined and netplan_config_rpi.changed) or (netplan_config_ms01 is defined and netplan_config_ms01.changed)
 
     - name: Check netplan syntax
       ansible.builtin.command: netplan generate
@@ -326,7 +364,7 @@
             msg: "WARNING: Main netplan configuration failed, fallback configuration has been applied."
       always:
         - name: Start connectivity verification in background
-          ansible.builtin.shell: nohup /root/verify_connectivity.sh > /var/log/ansible_network_verify.log 2>&1 &
+          ansible.builtin.shell: "nohup /root/verify_connectivity.sh > /var/log/ansible_network_verify.log 2>&1 &"
           args:
             executable: /bin/bash
       when: (netplan_config_rpi is defined and netplan_config_rpi.changed and netplan_generate_result.rc == 0) or 
@@ -359,22 +397,11 @@
             msg: "{{ bond_status_after['content'] | b64decode }}"
           when: is_ms01 and bond_status_after.content is defined
 
-        - name: Test connectivity to primary gateway
-          ansible.builtin.uri:
-            url: "http://{{ admin_gateway if is_ms01 else control_plane_gateway }}"
-            method: GET
-            timeout: 5
-            status_code: -1  # Accept any status code
-          register: gateway_connectivity
-          failed_when: false
-          ignore_errors: true
-
-        - name: Test ping to primary gateway (fallback if HTTP fails)
+        - name: Test ping to primary gateway
           ansible.builtin.command: "ping -c 3 {{ admin_gateway if is_ms01 else control_plane_gateway }}"
           register: ping_gateway_after
           changed_when: false
           failed_when: false
-          when: gateway_connectivity.status == -1
 
         - name: Test ping to K8s API VIP
           ansible.builtin.command: "ping -c 3 {{ k8s_api_vip }}"
@@ -391,7 +418,7 @@
         - name: Verify successful configuration and connectivity
           ansible.builtin.assert:
             that:
-              - gateway_connectivity.status != -1 or ping_gateway_after.rc == 0
+              - ping_gateway_after.rc == 0
               - dns_test_after.rc == 0
             success_msg: "Network configuration applied and primary gateway connectivity verified!"
             fail_msg: "WARNING: Network configuration applied, but primary gateway ping or DNS resolution FAILED. Check logs and /var/log/ansible_network_verify.log. Fallback may have been triggered or manual intervention needed."
@@ -401,10 +428,10 @@
           ansible.builtin.file:
             path: "{{ fallback_file }}"
             state: absent
-          when: (gateway_connectivity.status != -1 or ping_gateway_after.rc == 0) and dns_test_after.rc == 0
+          when: ping_gateway_after.rc == 0 and dns_test_after.rc == 0
 
         - name: Remove connectivity verification script if successful
           ansible.builtin.file:
             path: /root/verify_connectivity.sh
             state: absent
-          when: (gateway_connectivity.status != -1 or ping_gateway_after.rc == 0) and dns_test_after.rc == 0
+          when: ping_gateway_after.rc == 0 and dns_test_after.rc == 0

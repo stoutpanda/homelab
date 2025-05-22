@@ -29,6 +29,18 @@
 -%}
 {%- endif -%}
 
+{%- if bond_interfaces is defined and bond_interfaces | length > 0 -%}
+{%-   for interface in bond_interfaces -%}
+{%-     set _ = ethernets.update(
+          { interface: {
+                'dhcp4'  : False,
+                'dhcp6'  : False,
+                'optional': True
+          }})
+-%}
+{%-   endfor -%}
+{%- endif -%}
+
 {%- set bonds = {} -%}
 {%- set vlans = {} -%}
 
