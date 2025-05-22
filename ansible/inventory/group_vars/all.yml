@@ -9,7 +9,7 @@ ansible_become_method: sudo
 # Network configuration
 control_plane_gateway: 10.8.18.1  # UDM-Pro interface is the gateway
 admin_gateway: 10.8.16.1  # UDM-Pro interface is the gateway
-pod_network_subnet: "10.8.28.0/23"
+pod_network_subnet: "10.8.28.0"
 pod_subnet_mask: "/23"       # 10.8.28.0/23
 service_subnet: "10.8.38.0"
 service_subnet_mask: "/24"   # 10.8.38.0/24

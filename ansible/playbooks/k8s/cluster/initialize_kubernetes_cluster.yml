@@ -20,10 +20,16 @@
       register: kubeadm_config
     
     - name: Display kubeadm config
-      debug:
-        msg: "{{ lookup('file', '/etc/kubernetes/kubeadm-config.yaml') }}"
+      slurp:
+        src: /etc/kubernetes/kubeadm-config.yaml
+      register: kubeadm_config_content
       when: kubeadm_config.changed
-    
+
+    - name: Show kubeadm config content
+      debug:
+        msg: "{{ kubeadm_config_content.content | b64decode }}"
+      when: kubeadm_config.changed and kubeadm_config_content is defined
+        
     - name: Initialize Kubernetes cluster
       command: kubeadm init --config=/etc/kubernetes/kubeadm-config.yaml --upload-certs
       register: kubeadm_init

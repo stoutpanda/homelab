@@ -683,3 +683,52 @@ Status: ✅ PASS
 Single TCP stream hitting expected performance ceiling. Network infrastructure performing optimally for 2-node setup.
 
 ✅ Complete Ubuntu 25.10 upgrade across all 6 nodes (3 control plane + 2 worker + 1 admin)
+
+
+# Kubernetes Homelab Project Tracking - Updated May 22, 2025
+
+## Kubernetes Control Plane Restoration In Progress 🔄
+
+### Today's Progress (May 22, 2025)
+- ✅ **Successfully restored control plane node connectivity**
+  - All 3 control plane nodes back online and accessible via Ansible
+  - Network configurations verified and operational
+  - SSH connectivity re-established with k8sadmin user
+
+- ✅ **Kubernetes component installation completed**
+  - Updated playbooks to use latest Kubernetes repository structure (v1.33.1) and updated all component versions to latest. 
+  - Successfully installed kubeadm, kubelet, and kubectl on all control plane nodes
+  - Containerd container runtime verified and operational
+  - System prerequisites (swap disabled, kernel modules loaded) confirmed
+
+- ⚠️ **Current Issue: Kubernetes Cluster Initialization**
+  - Encountered cgroups memory error during `kubeadm init`
+  - Error: `missing required cgroups: memory`
+  - Need to enable memory cgroups in Raspberry Pi boot configuration
+
+### Current Status
+| Component | Status | Notes |
+|-----------|---------|-------|
+| **Control Plane Nodes** | ✅ Ready | All 3 nodes accessible, components installed |
+| **Container Runtime** | ✅ Ready | containerd operational on all nodes |
+| **Network Configuration** | ✅ Ready | VLAN setup working properly |
+| **Kubernetes Installation** | ⚠️ In Progress | Components installed, init blocked by cgroups |
+| **Worker Nodes** | 🔜 Waiting | Ready for K8s once control plane restored |
+
+### Next Steps
+1. **Fix cgroups memory issue**:
+   - Enable memory cgroups in `/boot/firmware/cmdline.txt`
+   - Add `cgroup_enable=memory cgroup_memory=1` to boot parameters
+   - Reboot all control plane nodes
+
+2. **Complete cluster initialization**:
+   - Run kubeadm init with updated boot configuration
+   - Install Cilium CNI
+   - Join remaining control plane nodes
+
+3. **Restore HA configuration**:
+   - Configure HAProxy and Keepalived
+   - Set up VIP for high availability
+   - Verify failover functionality
+
+## Major Milestone: Complete Network Configuration Success ✅ (Previous)
