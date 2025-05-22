@@ -538,6 +538,8 @@ Today we successfully verified the high availability setup of our Kubernetes con
 
 # Kubernetes Homelab Project Tracking - Updated May 21, 2025
 
+- After some frustration with the pis, I explored some options to remount them in the rack so that if I broke the networking with ansible again I woulnd't have to pull the rack apart completly anymore. 
+
 ## Major Milestone: Complete Network Configuration Success ✅
 
 ### Today's Accomplishments
@@ -666,3 +668,18 @@ Before proceeding with worker nodes, the control plane needs verification and po
 | **Management** | ✅ Complete | Ansible automation fully operational |
 
 **Ready for Phase 6: Kubernetes Worker Node Integration**
+
+Network Performance Test - k8s-ms01-node-01
+Date: May 21, 2025
+Test: iperf3 between nodes (.90 → .91)
+Results Summary
+
+1G Networks (VLAN 16/18): ~940 Mbps - Normal
+10G Networks (VLAN 28/38/48): ~3.12 Gbps - Excellent
+Retransmissions: Very low (0-44 over 10sec)
+Bond0 + Jumbo Frames: Working properly
+
+Status: ✅ PASS
+Single TCP stream hitting expected performance ceiling. Network infrastructure performing optimally for 2-node setup.
+
+
