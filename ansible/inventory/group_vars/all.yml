@@ -23,7 +23,7 @@ control_pane_subnet: "10.8.18.0"
 control_subnet_mask: "/24"   # 10.8.18.0/24
 
 # Kubernetes configuration
-kubernetes_version: "v1.33.0"
+kubernetes_version: "v1.33.1"
 cni_plugin: "cilium"
 cilium_version: "1.17.3"
 containerd_version: "2.0.0"
