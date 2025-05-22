@@ -25,9 +25,9 @@ control_subnet_mask: "/24"   # 10.8.18.0/24
 # Kubernetes configuration
 kubernetes_version: "v1.33.1"
 cni_plugin: "cilium"
-cilium_version: "1.17.3"
-containerd_version: "2.0.0"
-etcd_version: "3.5.9"
+cilium_version: "1.17.4"
+containerd_version: "2.1.1"
+etcd_version: "3.6.0"
 
 # Load balancer network
 loadbalancer_cidr: "/27"

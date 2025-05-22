@@ -20,8 +20,8 @@ apiServer:
     - localhost
     - 127.0.0.1
 networking:
-  podSubnet: {{ pod_network_cidr }}
-  serviceSubnet: {{ service_cidr }}
+  podSubnet: {{ pod_network_subnet }}
+  serviceSubnet: {{ service_subnet }}
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
