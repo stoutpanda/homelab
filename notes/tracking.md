@@ -535,3 +535,134 @@ Today we successfully verified the high availability setup of our Kubernetes con
 2. **Apply the corrected gateway configuration** (10.8.18.1 instead of 10.8.16.1)
 3. **Verify MS-01 interface detection** works correctly with the new approach
 4. **Document the modernization changes** in project documentation
+
+# Kubernetes Homelab Project Tracking - Updated May 21, 2025
+
+## Major Milestone: Complete Network Configuration Success ✅
+
+### Today's Accomplishments
+- ✅ **Successfully configured networking on all MS-01 worker nodes**
+  - Fixed complex interface detection and bonding configuration
+  - Properly configured dual 2.5G interfaces (enp87s0, enp90s0)
+  - Successfully created bond0 with SFP+ interfaces (enp2s0f0np0, enp2s0f1np1)
+  - Configured all required VLANs on bond0 (28, 38, 48) with jumbo frames (MTU 9000)
+  - Established proper routing between management and control plane networks
+
+- ✅ **Resolved networking playbook issues**
+  - Fixed missing network diagnostic tools (`iputils-ping`, `dnsutils`, etc.)
+  - Modernized Ansible playbook with proper module usage instead of deprecated shell commands
+  - Improved error handling with block/rescue structure
+  - Enhanced network verification with comprehensive connectivity tests
+
+- ✅ **Network Infrastructure Now Complete**
+  - All control plane nodes (3x Raspberry Pi 5): ✅ Ready
+  - All worker nodes (2x MS-01): ✅ Ready
+  - Complex VLAN segmentation working across all networks
+  - High-availability networking infrastructure operational
+
+### Current Network Status
+
+| Node Type | Count | Network Status | IP Configuration |
+|-----------|-------|----------------|------------------|
+| Control Plane (RPi5) | 3 | ✅ Operational | Single interface with VLAN 18 access |
+| Worker Nodes (MS-01) | 2 | ✅ Operational | Dual management + SFP+ bond with VLANs |
+| Admin Node (RPi5) | 1 | ✅ Operational | Dual VLAN access (16/18) |
+
+### Detailed Network Configuration Achieved
+
+#### MS-01 Worker Nodes
+- **Management Network**: 10.8.16.90-91/24 (VLAN 16) via enp90s0
+- **Control Plane Network**: 10.8.18.90-91/24 (VLAN 18) via enp87s0  
+- **Bond Configuration**: 802.3ad LACP with SFP+ interfaces
+  - **Pod Network**: 10.8.28.90-91/23 (VLAN 28) via bond0
+  - **Service Network**: 10.8.38.90-91/24 (VLAN 38) via bond0
+  - **Storage Network**: 10.8.48.90-91/24 (VLAN 48) via bond0
+- **MTU**: 9000 bytes on storage network for optimal performance
+
+#### Control Plane Nodes  
+- **Management Network**: 10.8.16.86-88/24 (VLAN 16)
+- **Control Plane Network**: 10.8.18.86-88/24 (VLAN 18)
+- **High Availability VIP**: 10.8.18.2 (HAProxy + Keepalived)
+
+### Important: Control Plane Verification Required ⚠️
+
+Before proceeding with worker nodes, the control plane needs verification and potential restoration:
+
+#### Control Plane Status Check Required
+- **k8s-cp-01**: Upgraded to Ubuntu 25.04, may have dropped out of HA cluster
+- **k8s-cp-02**: Needs verification of Kubernetes components and HA status  
+- **k8s-cp-03**: Needs verification of Kubernetes components and HA status
+- **etcd cluster**: Likely needs verification/restoration after network changes
+- **HAProxy/Keepalived**: VIP (10.8.18.2) functionality needs confirmation
+- **Cilium CNI**: May need reconfiguration after network updates
+
+#### Control Plane Verification Tasks
+1. **Check cluster status**: `kubectl get nodes` from k8s-admin
+2. **Verify etcd health**: Check all 3 etcd members are healthy
+3. **Test HA functionality**: Confirm VIP is working and failing over properly
+4. **Validate CNI**: Ensure pod networking is functional
+5. **Check certificates**: Verify API server certificates include VIP
+6. **Test API access**: Confirm secure access via VIP without certificate warnings
+
+#### Potential Recovery Actions Needed
+- Re-join k8s-cp-01 to the cluster if it dropped out
+- Restore HAProxy/Keepalived configuration if needed
+- Reconfigure Cilium if pod networking is broken
+- Update certificates if VIP access has certificate issues
+
+### Next Steps - Kubernetes Cluster Completion
+
+**Phase 1: Control Plane Verification and Recovery**
+1. **Verify Control Plane Health**:
+   - Check all control plane nodes are in Ready status
+   - Verify etcd cluster has 3 healthy members
+   - Test HA failover functionality
+   - Confirm CNI is operational
+
+**Phase 2: Worker Node Integration**  
+1. **Install Kubernetes Prerequisites on Worker Nodes**:
+   - Install containerd container runtime
+   - Install Kubernetes components (kubelet, kubeadm, kubectl)
+   - Configure system prerequisites (swap, kernel modules, etc.)
+
+2. **Join Worker Nodes to Cluster**:
+   - Generate join tokens from control plane
+   - Execute worker node join process
+   - Verify nodes appear in cluster
+
+3. **Storage Configuration**:
+   - Configure Ceph storage cluster on worker nodes
+   - Set up persistent volume provisioning
+   - Test storage performance across 10G network
+
+4. **Application Deployment**:
+   - Deploy ingress controller
+   - Set up monitoring stack (Prometheus, Grafana)
+   - Deploy initial applications
+
+### Technical Notes
+
+#### Key Lessons Learned
+- Modern Ubuntu installations don't include `ping` by default - always install network diagnostic tools first
+- Complex interface naming in enterprise hardware requires robust detection logic
+- LACP bonding with VLANs requires careful netplan configuration structure
+- Ansible fact gathering is more reliable than shell commands for interface detection
+
+#### Playbook Improvements Made
+- Replaced deprecated shell commands with modern Ansible modules
+- Added comprehensive network tool installation
+- Improved error handling with block/rescue patterns
+- Enhanced connectivity verification with multiple test methods
+- Created reusable templates for different node types
+
+### Infrastructure Status Summary
+
+| Component | Status | Notes |
+|-----------|---------|-------|
+| **Networking** | ✅ Complete | All nodes operational with complex VLAN setup |
+| **Control Plane** | ? Needs to be verified | 3-node HA cluster unsure of status|
+| **Worker Nodes** | 🔄 Ready for K8s | Hardware ready, need Kubernetes installation |
+| **Storage Network** | ✅ Ready | 10G bonded network with jumbo frames |
+| **Management** | ✅ Complete | Ansible automation fully operational |
+
+**Ready for Phase 6: Kubernetes Worker Node Integration**
