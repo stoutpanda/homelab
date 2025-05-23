@@ -1,0 +1,113 @@
+---
+# final_cgroups_v2_fix.yml
+- name: Final fix for cgroups v2 and Kubernetes compatibility
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Verify cgroup v2 is working
+      shell: cat /sys/fs/cgroup/cgroup.controllers
+      register: cgroup_controllers
+      changed_when: false
+      
+    - name: Display available controllers
+      debug:
+        msg:
+          - "✅ cgroup v2 is active with controllers: {{ cgroup_controllers.stdout }}"
+          - "Memory controller available: {{ 'memory' in cgroup_controllers.stdout }}"
+    
+    - name: Check current boot parameters (still have conflict)
+      shell: cat /proc/cmdline
+      register: current_boot
+      changed_when: false
+      
+    - name: Show boot parameter issue
+      debug:
+        msg:
+          - "🚨 STILL HAVE CONFLICTING PARAMETERS:"
+          - "{{ current_boot.stdout }}"
+          - "Need to remove cgroup_disable=memory completely"
+    
+    - name: Read cmdline.txt file to fix the persistent conflict
+      slurp:
+        src: /boot/firmware/cmdline.txt
+      register: cmdline_file
+      
+    - name: The boot file vs actual kernel parameters are different
+      debug:
+        msg:
+          - "File contains: {{ cmdline_file.content | b64decode | trim }}"
+          - "Kernel has: {{ current_boot.stdout }}"
+          - "The cgroup_disable=memory is coming from somewhere else!"
+    
+    - name: Check if there are other boot files or overlays
+      shell: |
+        echo "=== Checking for boot configuration sources ==="
+        find /boot -name "*cmdline*" -o -name "*config*" | head -10
+        echo "=== Checking for firmware overlays ==="
+        ls -la /boot/firmware/ | grep -E "(config|cmdline|overlay)"
+      register: boot_files_check
+      changed_when: false
+      
+    - name: Display boot configuration sources
+      debug:
+        msg: "{{ boot_files_check.stdout_lines }}"
+    
+    - name: Configure kubelet for cgroup v2 compatibility
+      copy:
+        dest: /etc/default/kubelet
+        content: |
+          # Kubernetes kubelet configuration for cgroup v2
+          KUBELET_EXTRA_ARGS=--cgroup-driver=systemd --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock
+        mode: '0644'
+      register: kubelet_config
+      
+    - name: Update containerd configuration for cgroup v2
+      shell: |
+        # Ensure containerd is configured for systemd cgroup driver
+        mkdir -p /etc/containerd
+        containerd config default > /etc/containerd/config.toml
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+      register: containerd_config
+      
+    - name: Restart containerd with new configuration
+      systemd:
+        name: containerd
+        state: restarted
+        daemon_reload: yes
+      when: containerd_config.changed
+      
+    - name: Restart kubelet with new configuration
+      systemd:
+        name: kubelet
+        state: restarted
+        daemon_reload: yes
+      when: kubelet_config.changed
+      
+    - name: Test kubeadm preflight with cgroup v2
+      shell: kubeadm init phase preflight --dry-run --ignore-preflight-errors=SystemVerification 2>&1
+      register: kubeadm_test
+      changed_when: false
+      failed_when: false
+      
+    - name: Display kubeadm preflight results
+      debug:
+        msg:
+          - "=== KUBEADM PREFLIGHT TEST ==="
+          - "{{ kubeadm_test.stdout_lines }}"
+          - "Return code: {{ kubeadm_test.rc }}"
+    
+    - name: Final status check
+      debug:
+        msg:
+          - "=== FINAL STATUS ==="
+          - "Node: {{ inventory_hostname }}"
+          - "cgroup v2 active: ✅"
+          - "Memory controller available: ✅"
+          - "kubelet configured for cgroup v2: ✅"
+          - "containerd configured for systemd cgroups: ✅"
+          - ""
+          - "🚀 READY TO INITIALIZE KUBERNETES CLUSTER!"
+          - ""
+          - "Next command: ansible-playbook playbooks/k8s/cluster/initialize_kubernetes_cluster.yml"

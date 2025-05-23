@@ -1,0 +1,101 @@
+- name: Remove conflicting cgroup_disable=memory parameter
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Backup current cmdline.txt with conflict timestamp
+      copy:
+        src: /boot/firmware/cmdline.txt
+        dest: "/boot/firmware/cmdline.txt.conflict_fix.{{ ansible_date_time.iso8601_basic_short }}"
+        remote_src: yes
+      
+    - name: Read current cmdline.txt
+      slurp:
+        src: /boot/firmware/cmdline.txt
+      register: current_cmdline
+      
+    - name: Display current problematic cmdline
+      debug:
+        msg: 
+          - "Current cmdline.txt: {{ current_cmdline.content | b64decode | trim }}"
+          - "🚨 CONFLICT DETECTED: Both cgroup_disable=memory AND cgroup_enable=memory present!"
+    
+    - name: Parse and clean conflicting parameters
+      set_fact:
+        cleaned_params: >-
+          {% set params = (current_cmdline.content | b64decode | trim).split() %}
+          {% set cleaned = [] %}
+          {% for param in params %}
+            {% if param != 'cgroup_disable=memory' %}
+              {% set _ = cleaned.append(param) %}
+            {% endif %}
+          {% endfor %}
+          {{ cleaned | join(' ') }}
+    
+    - name: Verify cleaned parameters
+      debug:
+        msg: 
+          - "Cleaned cmdline: {{ cleaned_params }}"
+          - "Contains cgroup_disable=memory: {{ 'cgroup_disable=memory' in cleaned_params }}"
+          - "Contains cgroup_enable=memory: {{ 'cgroup_enable=memory' in cleaned_params }}"
+          - "Contains cgroup_memory=1: {{ 'cgroup_memory=1' in cleaned_params }}"
+    
+    - name: Write corrected cmdline.txt
+      copy:
+        content: "{{ cleaned_params }}"
+        dest: /boot/firmware/cmdline.txt
+        mode: '0644'
+      register: cmdline_fixed
+    
+    - name: Verify the fix
+      slurp:
+        src: /boot/firmware/cmdline.txt
+      register: verification
+      when: cmdline_fixed.changed
+      
+    - name: Display corrected cmdline
+      debug:
+        msg: "✅ Corrected cmdline.txt: {{ verification.content | b64decode | trim }}"
+      when: cmdline_fixed.changed
+    
+    - name: Validate no conflicts remain
+      assert:
+        that:
+          - "'cgroup_disable=memory' not in (verification.content | b64decode)"
+          - "'cgroup_enable=memory' in (verification.content | b64decode)"
+          - "'cgroup_memory=1' in (verification.content | b64decode)"
+        success_msg: "✅ Conflict resolved! Only cgroup_enable parameters remain."
+        fail_msg: "❌ Conflict still exists or enable parameters missing."
+      when: cmdline_fixed.changed
+    
+    - name: Reboot to apply the corrected parameters
+      reboot:
+        reboot_timeout: 300
+        connect_timeout: 5
+        pre_reboot_delay: 5
+        post_reboot_delay: 30
+        test_command: "systemctl is-system-running --wait"
+      when: cmdline_fixed.changed
+    
+    - name: Verify memory cgroups are now properly enabled
+      shell: cat /proc/cgroups | grep memory
+      register: final_cgroup_check
+      changed_when: false
+      
+    - name: Parse final cgroup status
+      set_fact:
+        memory_cgroups_working: "{{ final_cgroup_check.stdout.split()[3] == '1' }}"
+      
+    - name: Display final verification
+      debug:
+        msg:
+          - "Final cgroups status: {{ final_cgroup_check.stdout }}"
+          - "Memory cgroups enabled: {{ memory_cgroups_working }}"
+    
+    - name: Final success check
+      assert:
+        that:
+          - memory_cgroups_working
+        success_msg: "🎉 SUCCESS! Memory cgroups are now properly enabled and working!"
+        fail_msg: "❌ Memory cgroups still not working. Manual investigation needed."

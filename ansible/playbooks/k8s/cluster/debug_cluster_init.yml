@@ -1,0 +1,165 @@
+---
+# debug_cluster_initialization.yml
+- name: Debug cluster initialization issues
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check if API server is running
+      shell: systemctl status kubelet
+      register: kubelet_status
+      changed_when: false
+      failed_when: false
+      
+    - name: Display kubelet status
+      debug:
+        msg: "{{ kubelet_status.stdout_lines }}"
+    
+    - name: Check API server pod status
+      shell: crictl ps | grep kube-apiserver || echo "API server container not found"
+      register: apiserver_container
+      changed_when: false
+      failed_when: false
+      
+    - name: Display API server container status
+      debug:
+        msg: "{{ apiserver_container.stdout_lines }}"
+    
+    - name: Check if admin.conf exists and has proper permissions
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: admin_conf_stat
+      
+    - name: Display admin.conf information
+      debug:
+        msg:
+          - "admin.conf exists: {{ admin_conf_stat.stat.exists }}"
+          - "admin.conf size: {{ admin_conf_stat.stat.size | default('N/A') }}"
+          - "admin.conf permissions: {{ admin_conf_stat.stat.mode | default('N/A') }}"
+    
+    - name: Check admin.conf content structure
+      shell: head -10 /etc/kubernetes/admin.conf
+      register: admin_conf_content
+      when: admin_conf_stat.stat.exists
+      changed_when: false
+      
+    - name: Display admin.conf structure
+      debug:
+        msg: "{{ admin_conf_content.stdout_lines }}"
+      when: admin_conf_stat.stat.exists
+    
+    - name: Check kubeconfig for k8sadmin user
+      stat:
+        path: /home/k8sadmin/.kube/config
+      register: user_kubeconfig_stat
+      
+    - name: Display user kubeconfig status
+      debug:
+        msg:
+          - "k8sadmin kubeconfig exists: {{ user_kubeconfig_stat.stat.exists }}"
+          - "k8sadmin kubeconfig size: {{ user_kubeconfig_stat.stat.size | default('N/A') }}"
+          - "k8sadmin kubeconfig owner: {{ user_kubeconfig_stat.stat.pw_name | default('N/A') }}"
+    
+    - name: Try kubectl with explicit kubeconfig as root
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
+      register: kubectl_root_test
+      changed_when: false
+      failed_when: false
+      
+    - name: Display root kubectl test
+      debug:
+        msg:
+          - "Root kubectl test return code: {{ kubectl_root_test.rc }}"
+          - "Root kubectl output: {{ kubectl_root_test.stdout_lines }}"
+          - "Root kubectl error: {{ kubectl_root_test.stderr_lines }}"
+    
+    - name: Check if certificates are valid
+      shell: |
+        openssl x509 -in /etc/kubernetes/pki/ca.crt -text -noout | grep -A 2 "Validity"
+        echo "---"
+        openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout | grep -A 2 "Validity"
+      register: cert_validity
+      changed_when: false
+      failed_when: false
+      
+    - name: Display certificate validity
+      debug:
+        msg: "{{ cert_validity.stdout_lines }}"
+    
+    - name: Check API server accessibility
+      shell: curl -k https://localhost:6443/healthz
+      register: api_health_check
+      changed_when: false
+      failed_when: false
+      
+    - name: Display API server health
+      debug:
+        msg:
+          - "API server health check: {{ api_health_check.rc }}"
+          - "Response: {{ api_health_check.stdout }}"
+    
+    - name: Check Cilium pods status
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n kube-system -l k8s-app=cilium -o wide || echo "Cannot get Cilium pods"
+      register: cilium_pods
+      changed_when: false
+      failed_when: false
+      
+    - name: Display Cilium pods status
+      debug:
+        msg: "{{ cilium_pods.stdout_lines }}"
+    
+    - name: Check all system pods
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n kube-system -o wide || echo "Cannot get system pods"
+      register: all_system_pods
+      changed_when: false
+      failed_when: false
+      
+    - name: Display all system pods
+      debug:
+        msg: "{{ all_system_pods.stdout_lines }}"
+    
+    - name: Check node status
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes -o wide || echo "Cannot get nodes"
+      register: node_status
+      changed_when: false
+      failed_when: false
+      
+    - name: Display node status
+      debug:
+        msg: "{{ node_status.stdout_lines }}"
+    
+    - name: Recreate k8sadmin kubeconfig properly
+      block:
+        - name: Ensure .kube directory exists with correct ownership
+          file:
+            path: /home/k8sadmin/.kube
+            state: directory
+            owner: k8sadmin
+            group: k8sadmin
+            mode: '0755'
+            
+        - name: Copy admin.conf to k8sadmin kubeconfig
+          copy:
+            src: /etc/kubernetes/admin.conf
+            dest: /home/k8sadmin/.kube/config
+            remote_src: yes
+            owner: k8sadmin
+            group: k8sadmin
+            mode: '0600'
+            
+        - name: Test k8sadmin kubectl access
+          become_user: k8sadmin
+          shell: kubectl get nodes
+          register: k8sadmin_kubectl_test
+          environment:
+            KUBECONFIG: /home/k8sadmin/.kube/config
+          failed_when: false
+          
+        - name: Display k8sadmin kubectl test results
+          debug:
+            msg:
+              - "k8sadmin kubectl return code: {{ k8sadmin_kubectl_test.rc }}"
+              - "k8sadmin kubectl output: {{ k8sadmin_kubectl_test.stdout_lines }}"
+              - "k8sadmin kubectl error: {{ k8sadmin_kubectl_test.stderr_lines }}"
+      when: admin_conf_stat.stat.exists
