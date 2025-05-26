@@ -1,0 +1,65 @@
+---
+# verify_ha_status.yml - Check the current HA status
+- name: Verify HA configuration status
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_ha_port: 16443
+  
+  tasks:
+    - name: Check service status
+      shell: |
+        echo "=== {{ inventory_hostname }} ==="
+        echo "Keepalived: $(systemctl is-active keepalived)"
+        echo "HAProxy: $(systemctl is-active haproxy)"
+        echo -n "Has VIP: "
+        ip addr show | grep -q {{ k8s_api_vip }} && echo "YES" || echo "NO"
+        echo -n "Network interface: "
+        ip addr show | grep {{ ansible_default_ipv4.address }} | awk '{print $NF}'
+      register: node_status
+      
+    - name: Display node status
+      debug:
+        msg: "{{ node_status.stdout_lines }}"
+        
+    - name: Check Keepalived logs
+      shell: |
+        echo "=== Recent Keepalived activity on {{ inventory_hostname }} ==="
+        journalctl -u keepalived -n 20 --no-pager | grep -E "(Entering|Leaving|VIP|priority|MASTER|BACKUP)" || echo "No relevant logs"
+      register: keepalived_logs
+      
+    - name: Display Keepalived logs
+      debug:
+        msg: "{{ keepalived_logs.stdout_lines }}"
+      when: keepalived_logs.stdout_lines | length > 1
+
+- name: Test VIP accessibility
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Test API server through VIP
+      shell: |
+        echo "Testing API access through VIP..."
+        curl -k https://{{ k8s_api_vip }}:{{ k8s_ha_port }}/healthz 2>/dev/null || echo "FAILED"
+      register: vip_test
+      
+    - name: Display VIP test results
+      debug:
+        msg: "{{ vip_test.stdout_lines }}"
+        
+    - name: Test kubectl through VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: kubectl_test
+      failed_when: false
+      
+    - name: Display kubectl results
+      debug:
+        msg: "{{ kubectl_test.stdout_lines }}"

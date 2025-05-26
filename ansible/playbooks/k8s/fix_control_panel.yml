@@ -1,0 +1,66 @@
+---
+# fix_control_plane_kubeconfig.yml
+- name: Fix kubeconfig on all control plane nodes
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Fetch admin.conf from first control plane node
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: /tmp/admin.conf
+        flat: yes
+
+- name: Distribute and configure kubeconfig on other control plane nodes
+  hosts: k8s-cp-02:k8s-cp-03
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Create .kube directory for k8sadmin
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+    
+    - name: Copy admin.conf to k8sadmin's kubeconfig
+      copy:
+        src: /tmp/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+    
+    - name: Create .kube directory for root
+      file:
+        path: /root/.kube
+        state: directory
+        mode: '0700'
+    
+    - name: Copy admin.conf to root's kubeconfig
+      copy:
+        src: /tmp/admin.conf
+        dest: /root/.kube/config
+        mode: '0600'
+    
+    - name: Test kubectl connectivity
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      register: kubectl_test
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      
+    - name: Display kubectl test result
+      debug:
+        msg: "{{ kubectl_test.stdout_lines }}"
+
+- name: Clean up temporary file
+  hosts: localhost
+  tasks:
+    - name: Remove temporary admin.conf
+      file:
+        path: /tmp/admin.conf
+        state: absent

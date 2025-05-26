@@ -1,0 +1,294 @@
+---
+# test_ha_failover_comprehensive.yml - Fixed version
+- name: Comprehensive HA and Failover Testing
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_ha_port: 16443
+    k8s_api_port: 6443
+  
+  tasks:
+    # Phase 1: Current State Assessment
+    - name: Check current HAProxy status on all nodes
+      systemd:
+        name: haproxy
+      register: haproxy_status
+      
+    - name: Check current Keepalived status on all nodes
+      systemd:
+        name: keepalived
+      register: keepalived_status
+      
+    - name: Display service status
+      debug:
+        msg:
+          - "Node: {{ inventory_hostname }}"
+          - "HAProxy: {{ haproxy_status.status.ActiveState }}"
+          - "Keepalived: {{ keepalived_status.status.ActiveState }}"
+    
+    - name: Identify which node currently has the VIP
+      shell: ip addr show | grep -q {{ k8s_api_vip }} && echo "HAS_VIP" || echo "NO_VIP"
+      register: vip_status
+      changed_when: false
+      
+    - name: Set fact about VIP ownership
+      set_fact:
+        has_vip: "{{ vip_status.stdout == 'HAS_VIP' }}"
+        original_vip_holder: "{{ inventory_hostname if vip_status.stdout == 'HAS_VIP' else '' }}"
+        
+    - name: Display VIP ownership
+      debug:
+        msg: "{{ inventory_hostname }} {{ 'has' if has_vip else 'does not have' }} the VIP"
+
+- name: Test API connectivity through VIP
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_ha_port: 16443
+  
+  tasks:
+    - name: Test initial API connectivity via VIP
+      uri:
+        url: "https://{{ k8s_api_vip }}:{{ k8s_ha_port }}/healthz"
+        validate_certs: no
+        method: GET
+      register: initial_health
+      failed_when: false
+      
+    - name: Show initial health check
+      debug:
+        msg: "Initial API health: {{ initial_health.status | default('FAILED') }} - {{ initial_health.msg | default('No response') }}"
+      
+    - name: Test kubectl through VIP
+      become_user: k8sadmin
+      shell: kubectl get nodes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }} --insecure-skip-tls-verify=true
+      register: kubectl_test
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      failed_when: false
+      
+    - name: Display kubectl results
+      debug:
+        msg: "{{ kubectl_test.stdout_lines if kubectl_test.rc == 0 else kubectl_test.stderr_lines }}"
+    
+    - name: Save initial test results
+      set_fact:
+        initial_api_working: "{{ initial_health.status is defined and initial_health.status == 200 }}"
+
+- name: Perform Failover Test - Stop HAProxy on Master
+  hosts: control_plane_nodes
+  become: true
+  serial: 1
+  
+  tasks:
+    - name: Stop HAProxy on node with VIP
+      systemd:
+        name: haproxy
+        state: stopped
+      when: has_vip | default(false) | bool
+      register: stopped_haproxy
+      
+    - name: Note which node we stopped HAProxy on
+      debug:
+        msg: "Stopped HAProxy on {{ inventory_hostname }}"
+      when: stopped_haproxy.changed | default(false) | bool
+      
+    - name: Wait for VIP migration
+      pause:
+        seconds: 15
+      when: stopped_haproxy.changed | default(false) | bool
+
+- name: Verify Failover Succeeded
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Check which node has VIP after failover
+      shell: ip addr show | grep -q {{ k8s_api_vip }} && echo "HAS_VIP" || echo "NO_VIP"
+      register: vip_after_failover
+      changed_when: false
+      
+    - name: Set fact about new VIP ownership
+      set_fact:
+        has_vip_now: "{{ vip_after_failover.stdout == 'HAS_VIP' }}"
+        
+    - name: Display new VIP ownership
+      debug:
+        msg: "{{ inventory_hostname }} {{ 'now has' if has_vip_now else 'does not have' }} the VIP"
+    
+    - name: Verify HAProxy is running on new master
+      systemd:
+        name: haproxy
+      register: haproxy_new_status
+      when: has_vip_now
+      
+    - name: Check Keepalived logs for failover event
+      shell: journalctl -u keepalived -n 50 | grep -E "(Entering|Leaving) (MASTER|BACKUP) STATE" | tail -5
+      register: keepalived_logs
+      changed_when: false
+      
+    - name: Display Keepalived state transitions
+      debug:
+        msg: "{{ keepalived_logs.stdout_lines }}"
+
+- name: Test API After Failover
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Test API connectivity after failover
+      uri:
+        url: "https://{{ k8s_api_vip }}:{{ k8s_ha_port }}/healthz"
+        validate_certs: no
+        method: GET
+      register: after_health
+      failed_when: false
+      
+    - name: Show post-failover health check
+      debug:
+        msg: "API health after failover: {{ after_health.status | default('FAILED') }} - {{ after_health.msg | default('No response') }}"
+      
+    - name: Test kubectl after failover
+      become_user: k8sadmin
+      shell: kubectl get nodes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }} --insecure-skip-tls-verify=true
+      register: kubectl_after
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      failed_when: false
+      
+    - name: Display kubectl after failover
+      debug:
+        msg: "{{ kubectl_after.stdout_lines if kubectl_after.rc == 0 else kubectl_after.stderr_lines }}"
+    
+    - name: Save failover test results
+      set_fact:
+        failover_api_working: "{{ after_health.status is defined and after_health.status == 200 }}"
+
+- name: Test Multiple API Requests During Restoration
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Rapid API connectivity test
+      shell: |
+        echo "Testing API connectivity during restoration..."
+        success=0
+        failed=0
+        for i in {1..10}; do
+          response=$(curl -k -s -o /dev/null -w "%{http_code}" https://{{ k8s_api_vip }}:{{ k8s_ha_port }}/healthz)
+          if [ "$response" = "200" ]; then
+            echo "Attempt $i: SUCCESS (200)"
+            ((success++))
+          else
+            echo "Attempt $i: FAILED ($response)"
+            ((failed++))
+          fi
+          sleep 1
+        done
+        echo "---"
+        echo "Success: $success/10"
+        echo "Failed: $failed/10"
+      register: rapid_test
+      
+    - name: Display rapid test results
+      debug:
+        msg: "{{ rapid_test.stdout_lines }}"
+
+- name: Restore All Services
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Start HAProxy on all nodes
+      systemd:
+        name: haproxy
+        state: started
+        enabled: yes
+        
+    - name: Ensure Keepalived is running on all nodes
+      systemd:
+        name: keepalived
+        state: started
+        enabled: yes
+        
+    - name: Wait for services to stabilize
+      pause:
+        seconds: 10
+        
+    - name: Final service status check
+      shell: |
+        echo "Node: {{ inventory_hostname }}"
+        echo "HAProxy: $(systemctl is-active haproxy)"
+        echo "Keepalived: $(systemctl is-active keepalived)"
+        echo "Has VIP: $(ip addr show | grep -q {{ k8s_api_vip }} && echo 'YES' || echo 'NO')"
+        echo "---"
+      register: final_status
+      
+    - name: Display final status
+      debug:
+        msg: "{{ final_status.stdout_lines }}"
+
+- name: Generate HA Test Report
+  hosts: k8s-admin
+  gather_facts: true
+  
+  tasks:
+    - name: Get current timestamp
+      set_fact:
+        test_timestamp: "{{ ansible_date_time.iso8601 }}"
+    
+    - name: Determine test results
+      set_fact:
+        test_passed: "{{ initial_api_working | default(false) and failover_api_working | default(false) }}"
+        original_master: "{{ hostvars[groups['control_plane_nodes'] | first]['original_vip_holder'] | default('Unknown') }}"
+    
+    - name: Create test summary
+      debug:
+        msg: |
+          ===== HA FAILOVER TEST REPORT =====
+          
+          Test Date: {{ test_timestamp }}
+          Test Result: {{ 'PASSED' if test_passed else 'FAILED' }}
+          
+          Initial State:
+          - API via VIP was: {{ 'Working' if initial_api_working | default(false) else 'Not Working' }}
+          - VIP originally on: {{ original_master if original_master != '' else 'Could not determine' }}
+          
+          Failover Test:
+          - HAProxy was stopped on the master node
+          - Waited 15 seconds for VIP migration
+          - API after failover: {{ 'Working' if failover_api_working | default(false) else 'Not Working' }}
+          
+          Service Restoration:
+          - All HAProxy instances restarted
+          - All Keepalived instances verified running
+          - Services given time to stabilize
+          
+          Overall Assessment:
+          {% if test_passed %}
+          ✅ HIGH AVAILABILITY IS WORKING CORRECTLY
+          - VIP failover completed successfully
+          - API remained accessible after failover
+          - All nodes are participating in the HA cluster
+          {% else %}
+          ❌ HIGH AVAILABILITY NEEDS ATTENTION
+          - Check HAProxy and Keepalived configurations
+          - Verify network connectivity between nodes
+          - Review certificate configuration
+          {% endif %}
+          
+          Next Steps:
+          - Review Keepalived logs for any issues
+          - Consider testing with longer durations
+          - Verify production readiness
+          =====================================

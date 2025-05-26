@@ -1,0 +1,138 @@
+---
+# diagnose_ha_issues.yml
+- name: Diagnose and fix HA configuration issues
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Stop all services first to get clean state
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - haproxy
+        - keepalived
+    
+    - name: Check for duplicate VIP assignments
+      shell: ip addr show | grep -c "10.8.18.2" || true
+      register: vip_count
+      
+    - name: Remove any stale VIP assignments
+      shell: ip addr del 10.8.18.2/24 dev {{ ansible_default_ipv4.interface }} || true
+      when: vip_count.stdout | int > 0
+    
+    - name: Verify HAProxy is listening correctly
+      shell: |
+        cat /etc/haproxy/haproxy.cfg | grep -A2 "bind"
+      register: haproxy_bind
+      
+    - name: Display HAProxy binding configuration
+      debug:
+        msg: "{{ haproxy_bind.stdout_lines }}"
+    
+    - name: Check if HAProxy backend servers are correct
+      shell: |
+        cat /etc/haproxy/haproxy.cfg | grep "server k8s"
+      register: haproxy_backends
+      
+    - name: Display HAProxy backend configuration
+      debug:
+        msg: "{{ haproxy_backends.stdout_lines }}"
+    
+    - name: Verify Keepalived interface configuration
+      shell: |
+        cat /etc/keepalived/keepalived.conf | grep -E "interface|virtual_router_id|priority"
+      register: keepalived_config
+      
+    - name: Display Keepalived configuration
+      debug:
+        msg: "{{ keepalived_config.stdout_lines }}"
+    
+    - name: Start Keepalived with clean state
+      systemd:
+        name: keepalived
+        state: started
+        enabled: yes
+    
+    - name: Wait for Keepalived to elect master
+      pause:
+        seconds: 10
+    
+    - name: Check which node actually has VIP
+      shell: ip addr show | grep "10.8.18.2" | wc -l
+      register: actual_vip
+      
+    - name: Display actual VIP status
+      debug:
+        msg: "{{ inventory_hostname }} has VIP: {{ 'YES' if actual_vip.stdout | int > 0 else 'NO' }}"
+    
+    - name: Start HAProxy only on the node with VIP
+      systemd:
+        name: haproxy
+        state: started
+        enabled: yes
+      when: actual_vip.stdout | int > 0
+    
+    - name: Start HAProxy on other nodes after delay
+      block:
+        - name: Wait for master to stabilize
+          pause:
+            seconds: 5
+            
+        - name: Start HAProxy
+          systemd:
+            name: haproxy
+            state: started
+            enabled: yes
+      when: actual_vip.stdout | int == 0
+
+- name: Fix kubectl access from admin node
+  hosts: k8s-admin
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check current kubeconfig
+      slurp:
+        src: /home/k8sadmin/.kube/config
+      register: current_kubeconfig
+      
+    - name: Display current server configuration
+      debug:
+        msg: "{{ (current_kubeconfig.content | b64decode | from_yaml).clusters[0].cluster.server }}"
+    
+    - name: Get fresh admin.conf from control plane
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: /tmp/admin.conf
+        flat: yes
+      delegate_to: k8s-cp-01
+      
+    - name: Copy fresh kubeconfig to admin node
+      copy:
+        src: /tmp/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+    
+    - name: Update kubeconfig to use VIP
+      become_user: k8sadmin
+      shell: |
+        kubectl config set-cluster kubernetes --server=https://10.8.18.2:16443
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+    
+    - name: Test kubectl access
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      register: kubectl_test
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      failed_when: false
+      
+    - name: Display kubectl test results
+      debug:
+        msg: "{{ kubectl_test.stdout_lines if kubectl_test.rc == 0 else kubectl_test.stderr_lines }}"
