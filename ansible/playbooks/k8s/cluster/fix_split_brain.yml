@@ -1,0 +1,54 @@
+---
+# fix_ha_split_brain.yml
+- name: Fix HA Split Brain Configuration
+  hosts: control_plane_nodes
+  become: true
+  gather_facts: true
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_api_port: 6443
+    k8s_ha_port: 16443
+  
+  tasks:
+    - name: Ensure services are stopped
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - keepalived
+        - haproxy
+    
+    - name: Remove any existing VIP
+      shell: "ip addr del {{ k8s_api_vip }}/24 dev {{ ansible_default_ipv4.interface }} 2>/dev/null || true"
+    
+    - name: Configure Keepalived with correct settings
+      template:
+        src: templates/keepalived_fixed.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+        backup: yes
+    
+    - name: Start Keepalived first on master only
+      systemd:
+        name: keepalived
+        state: started
+        enabled: yes
+      when: inventory_hostname == 'k8s-cp-01'
+    
+    - name: Wait for master to claim VIP
+      pause:
+        seconds: 10
+      when: inventory_hostname == 'k8s-cp-01'
+    
+    - name: Start Keepalived on backup nodes
+      systemd:
+        name: keepalived
+        state: started
+        enabled: yes
+      when: inventory_hostname != 'k8s-cp-01'
+    
+    - name: Start HAProxy on all nodes
+      systemd:
+        name: haproxy
+        state: started
+        enabled: yes

@@ -1,64 +1,85 @@
 ---
-# join_control_plane_nodes.yml
-- name: Get join information from first control plane node
+# join_remaining_control_plane_nodes.yml
+- name: Join remaining control plane nodes to the cluster
   hosts: k8s-cp-01
   become: true
   gather_facts: false
   
   tasks:
-    - name: Get cluster join command
+    - name: Generate join token
       shell: kubeadm token create --print-join-command
       register: join_command
       changed_when: false
     
-    - name: Get certificate key for control plane
-      shell: kubeadm init phase upload-certs --upload-certs | grep -A1 "certificate key" | tail -n1
-      register: certificate_key
+    - name: Upload certificates and generate certificate key
+      shell: |
+        kubeadm init phase upload-certs --upload-certs 2>&1 | tail -1
+      register: cert_key
       changed_when: false
     
-    - name: Set join command fact
+    - name: Store join information
       set_fact:
-        kubeadm_join_command: "{{ join_command.stdout }} --control-plane --certificate-key {{ certificate_key.stdout }}"
+        kubeadm_join_cmd: "{{ join_command.stdout }}"
+        certificate_key: "{{ cert_key.stdout }}"
     
-    - name: Display join command
+    - name: Display join information
       debug:
-        msg: "{{ kubeadm_join_command }}"
+        msg:
+          - "Join command: {{ kubeadm_join_cmd }}"
+          - "Certificate key: {{ certificate_key }}"
 
-- name: Join additional control plane nodes to the cluster
+- name: Prepare nodes for joining
   hosts: k8s-cp-02:k8s-cp-03
   become: true
   gather_facts: true
   
   tasks:
-    - name: Copy join command from first control plane node
-      set_fact:
-        kubeadm_join_command: "{{ hostvars['k8s-cp-01']['kubeadm_join_command'] }}"
+    - name: Check if node is already joined
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_conf
     
-    - name: Join the cluster
-      command: "{{ kubeadm_join_command }}"
-      args:
-        creates: /etc/kubernetes/manifests/kube-apiserver.yaml
+    - name: Reset node if needed
+      block:
+        - name: Reset kubeadm
+          shell: kubeadm reset --force
+          
+        - name: Clean up directories
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/kubernetes/
+            - /var/lib/etcd/
+            - /etc/cni/net.d/
+            
+        - name: Clean iptables rules
+          shell: |
+            iptables -F
+            iptables -t nat -F
+            iptables -t mangle -F
+            iptables -X
+          
+        - name: Restart containerd
+          systemd:
+            name: containerd
+            state: restarted
+      when: kubelet_conf.stat.exists
+
+- name: Join nodes to cluster
+  hosts: k8s-cp-02:k8s-cp-03
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Join cluster as control plane
+      shell: |
+        {{ hostvars['k8s-cp-01']['kubeadm_join_cmd'] }} \
+        --control-plane \
+        --certificate-key {{ hostvars['k8s-cp-01']['certificate_key'] }}
       register: join_result
-    
-    - name: Display join output
-      debug:
-        msg: "{{ join_result.stdout_lines | default('Node already joined') }}"
-      when: join_result is defined and join_result.stdout_lines is defined
-    
-    - name: Create .kube directory for root user
-      file:
-        path: /root/.kube
-        state: directory
-        mode: '0700'
-    
-    - name: Copy admin.conf to root's .kube/config
-      copy:
-        src: /etc/kubernetes/admin.conf
-        dest: /root/.kube/config
-        remote_src: yes
-        mode: '0600'
-    
-    - name: Create .kube directory for k8sadmin user
+      
+    - name: Create .kube directory
       file:
         path: /home/k8sadmin/.kube
         state: directory
@@ -66,7 +87,7 @@
         group: k8sadmin
         mode: '0700'
     
-    - name: Copy admin.conf to k8sadmin's .kube/config
+    - name: Copy admin config
       copy:
         src: /etc/kubernetes/admin.conf
         dest: /home/k8sadmin/.kube/config
@@ -75,24 +96,47 @@
         group: k8sadmin
         mode: '0600'
     
-    - name: Wait for node to become ready
-      become_user: k8sadmin
-      shell: kubectl get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+    - name: Wait for node to be ready
+      shell: |
+        kubectl get node {{ inventory_hostname }} --no-headers | awk '{print $2}'
       register: node_status
-      until: node_status.stdout == "True"
+      until: node_status.stdout == "Ready"
       retries: 30
       delay: 10
-      environment:
-        KUBECONFIG: /home/k8sadmin/.kube/config
-    
-    - name: Display cluster status
       become_user: k8sadmin
-      shell: kubectl get nodes -o wide
-      register: get_nodes
       environment:
         KUBECONFIG: /home/k8sadmin/.kube/config
-      changed_when: false
-    
-    - name: Show node status
+
+- name: Verify cluster status
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Get all nodes
+      shell: kubectl get nodes -o wide
+      become_user: k8sadmin
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: all_nodes
+      
+    - name: Display cluster status
       debug:
-        msg: "{{ get_nodes.stdout_lines }}"
+        msg: "{{ all_nodes.stdout_lines }}"
+    
+    - name: Check etcd cluster health
+      shell: |
+        kubectl -n kube-system exec etcd-k8s-cp-01 -- etcdctl \
+        --endpoints=https://127.0.0.1:2379 \
+        --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+        --cert=/etc/kubernetes/pki/etcd/server.crt \
+        --key=/etc/kubernetes/pki/etcd/server.key \
+        member list
+      become_user: k8sadmin
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+      register: etcd_members
+      
+    - name: Display etcd membership
+      debug:
+        msg: "{{ etcd_members.stdout_lines }}"
