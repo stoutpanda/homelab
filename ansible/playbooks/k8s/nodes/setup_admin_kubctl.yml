@@ -1,0 +1,131 @@
+---
+# setup_admin_kubectl.yml - Configure kubectl access from admin node
+- name: Set up kubectl access on admin node
+  hosts: k8s-admin
+  become: true
+  gather_facts: true
+  
+  vars:
+    k8s_api_vip: "10.8.18.2"
+    k8s_ha_port: 16443
+  
+  tasks:
+    - name: Install kubectl on admin node
+      block:
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+            
+        - name: Install prerequisites
+          apt:
+            name:
+              - apt-transport-https
+              - ca-certificates
+              - curl
+              - gnupg
+            state: present
+            
+        - name: Create keyrings directory
+          file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: '0755'
+            
+        - name: Download Kubernetes GPG key
+          shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+          args:
+            creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+            
+        - name: Add Kubernetes repository
+          apt_repository:
+            repo: deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /
+            state: present
+            filename: kubernetes
+            
+        - name: Update apt cache after adding repo
+          apt:
+            update_cache: yes
+            
+        - name: Install kubectl
+          apt:
+            name: kubectl
+            state: present
+
+- name: Get kubeconfig from control plane
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Fetch admin.conf from control plane
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: /tmp/admin.conf
+        flat: yes
+
+- name: Configure kubectl on admin node
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Create .kube directory for k8sadmin
+      file:
+        path: /home/k8sadmin/.kube
+        state: directory
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0700'
+        
+    - name: Copy kubeconfig to admin node
+      copy:
+        src: /tmp/admin.conf
+        dest: /home/k8sadmin/.kube/config
+        owner: k8sadmin
+        group: k8sadmin
+        mode: '0600'
+        
+    - name: Update kubeconfig to use the VIP
+      become_user: k8sadmin
+      shell: |
+        kubectl config set-cluster kubernetes --server=https://{{ k8s_api_vip }}:{{ k8s_ha_port }}
+        kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+        
+    - name: Test kubectl access
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      register: kubectl_test
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+        
+    - name: Display kubectl test results
+      debug:
+        msg: "{{ kubectl_test.stdout_lines }}"
+        
+    - name: Create kubectl alias for convenience
+      lineinfile:
+        path: /home/k8sadmin/.bashrc
+        line: "alias k='kubectl'"
+        state: present
+        
+    - name: Enable kubectl bash completion
+      lineinfile:
+        path: /home/k8sadmin/.bashrc
+        line: "source <(kubectl completion bash)"
+        state: present
+        
+    - name: Enable kubectl alias completion
+      lineinfile:
+        path: /home/k8sadmin/.bashrc
+        line: "complete -F __start_kubectl k"
+        state: present
+
+- name: Clean up
+  hosts: localhost
+  tasks:
+    - name: Remove temporary file
+      file:
+        path: /tmp/admin.conf
+        state: absent

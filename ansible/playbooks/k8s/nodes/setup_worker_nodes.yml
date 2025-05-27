@@ -1,0 +1,18 @@
+# ansible/playbooks/k8s/setup_worker_nodes.yml
+---
+- name: Prepare worker nodes for Kubernetes
+  hosts: worker_nodes
+  become: true
+  
+  tasks:
+    - name: Run common prerequisites
+      include_role:
+        name: k8s_prerequisites
+        
+    - name: Install containerd
+      include_role:
+        name: containerd
+        
+    - name: Install Kubernetes components
+      include_role:
+        name: k8s_components

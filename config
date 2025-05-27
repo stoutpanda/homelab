@@ -1,0 +1,11 @@
+apiVersion: v1
+clusters:
+- cluster:
+    insecure-skip-tls-verify: true
+    server: https://10.8.18.2:16443
+  name: kubernetes
+contexts: null
+current-context: ""
+kind: Config
+preferences: {}
+users: null
