@@ -1,0 +1,76 @@
+---
+# join_worker_nodes.yml
+- name: Join MS-01 worker nodes to Kubernetes cluster
+  hosts: k8s-cp-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Generate join command
+      shell: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+      
+    - name: Store join command
+      set_fact:
+        worker_join_cmd: "{{ join_command.stdout }}"
+
+- name: Join worker nodes
+  hosts: worker_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check if already joined
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_conf
+      
+    - name: Join cluster
+      shell: "{{ hostvars['k8s-cp-01']['worker_join_cmd'] }}"
+      when: not kubelet_conf.stat.exists
+      register: join_result
+      
+    - name: Display join result
+      debug:
+        msg: "{{ join_result.stdout_lines }}"
+      when: join_result is changed
+
+- name: Verify worker nodes
+  hosts: k8s-admin
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Wait for nodes to be ready
+      become_user: k8sadmin
+      shell: kubectl get nodes
+      register: nodes_status
+      until: "'k8s-ms01-node-01' in nodes_status.stdout and 'k8s-ms01-node-02' in nodes_status.stdout"
+      retries: 30
+      delay: 10
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+        
+    - name: Label worker nodes
+      become_user: k8sadmin
+      shell: |
+        kubectl label node {{ item }} node-role.kubernetes.io/worker=worker --overwrite
+        kubectl label node {{ item }} storage=ceph --overwrite
+        kubectl label node {{ item }} node-type=ms01 --overwrite
+      loop:
+        - k8s-ms01-node-01
+        - k8s-ms01-node-02
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+        
+    - name: Display final cluster status
+      become_user: k8sadmin
+      shell: kubectl get nodes -o wide
+      register: final_nodes
+      environment:
+        KUBECONFIG: /home/k8sadmin/.kube/config
+        
+    - name: Show cluster status
+      debug:
+        msg: "{{ final_nodes.stdout_lines }}"

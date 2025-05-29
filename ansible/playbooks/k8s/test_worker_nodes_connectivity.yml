@@ -1,0 +1,51 @@
+---
+# test_worker_connectivity.yml - Quick connectivity test for worker nodes
+- name: Test connectivity to worker nodes
+  hosts: worker_nodes
+  gather_facts: true
+  
+  tasks:
+    - name: Test basic connectivity
+      ping:
+    
+    - name: Get hostname
+      command: hostname
+      register: hostname_output
+      changed_when: false
+    
+    - name: Display worker node info
+      debug:
+        msg: |
+          Node: {{ inventory_hostname }}
+          Hostname: {{ hostname_output.stdout }}
+          IP: {{ ansible_default_ipv4.address }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          
+    - name: Verify network connectivity to control plane VIP
+      wait_for:
+        host: "{{ k8s_api_vip }}"
+        port: "{{ k8s_ha_port }}"
+        timeout: 10
+        msg: "Cannot reach Control Plane VIP at {{ k8s_api_vip }}:{{ k8s_ha_port }}. Check firewall rules."
+      register: vip_connectivity
+          
+    - name: Test API endpoint accessibility
+      uri:
+        url: "https://{{ k8s_api_vip }}:{{ k8s_ha_port }}/healthz"
+        method: GET
+        validate_certs: no
+        timeout: 5
+      register: api_health
+      failed_when: false
+          
+    - name: Report connectivity status
+      debug:
+        msg: |
+          Worker: {{ inventory_hostname }}
+          VIP Reachable: {{ 'YES' if vip_connectivity is succeeded else 'NO' }}
+          API Responding: {{ 'YES (HTTP ' + (api_health.status|string) + ')' if api_health.status is defined else 'NO' }}
+          Ready to Join: {{ 'YES' if vip_connectivity is succeeded and api_health.status is defined else 'NO - Fix firewall rules first' }}
+        
+    - name: Show connectivity status
+      debug:
+        msg: "{{ inventory_hostname }} can {{ 'reach' if ping_test.rc == 0 else 'NOT reach' }} control plane VIP"
