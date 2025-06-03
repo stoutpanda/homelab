@@ -1,0 +1,208 @@
+---
+# add_vlan18_tagged_safe.yml
+- name: Safely add VLAN 18 as tagged VLAN on worker nodes
+  hosts: worker_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Backup current netplan configuration
+      shell: cp /etc/netplan/60-k8s-network.yaml "/etc/netplan/60-k8s-network.yaml.backup.vlan18.$(date +%Y%m%d_%H%M%S)"
+      
+    - name: Read current netplan configuration
+      slurp:
+        src: /etc/netplan/60-k8s-network.yaml
+      register: current_config
+      
+    - name: Parse current configuration
+      set_fact:
+        netplan_config: "{{ current_config.content | b64decode | from_yaml }}"
+        
+    - name: Show what will change
+      debug:
+        msg: |
+          For {{ inventory_hostname }}:
+          - Will remove 10.8.18.{{ '90' if inventory_hostname == 'k8s-ms01-node-01' else '91' }}/24 from physical interface
+          - Will add vlan18 as tagged VLAN on enp87s0
+          - All other settings remain unchanged
+          
+    - name: Test creating temporary VLAN interface
+      shell: |
+        # Create VLAN interface temporarily
+        ip link add link enp87s0 name vlan18test type vlan id 18 || true
+        ip link set vlan18test up
+        ip addr add 10.8.18.{{ '90' if inventory_hostname == 'k8s-ms01-node-01' else '91' }}/24 dev vlan18test
+        
+        # Test connectivity
+        ping -c 2 -I vlan18test 10.8.18.87
+      register: vlan_test
+      failed_when: false
+      
+    - name: Clean up test interface
+      shell: |
+        ip link del vlan18test || true
+      when: vlan_test is defined
+      
+    - name: Show test results
+      debug:
+        msg: "{{ 'VLAN 18 connectivity test PASSED' if vlan_test.rc == 0 else 'VLAN 18 connectivity test FAILED - check UniFi tagging' }}"
+        
+    - name: Proceed only if test passed
+      when: vlan_test.rc == 0
+      block:
+        - name: Update netplan configuration for node-01
+          copy:
+            dest: /etc/netplan/60-k8s-network.yaml
+            content: |
+              network:
+                bonds:
+                  bond0:
+                    interfaces:
+                    - enp2s0f0np0
+                    - enp2s0f1np1
+                    mtu: 9000
+                    parameters:
+                      lacp-rate: fast
+                      mii-monitor-interval: 100
+                      mode: 802.3ad
+                      transmit-hash-policy: layer2+3
+                ethernets:
+                  enp2s0f0np0:
+                    dhcp4: false
+                    dhcp6: false
+                    optional: true
+                  enp2s0f1np1:
+                    dhcp4: false
+                    dhcp6: false
+                    optional: true
+                  enp87s0:
+                    addresses:
+                    - 10.8.16.90/24
+                    dhcp4: false
+                    dhcp6: false
+                    nameservers:
+                      addresses:
+                      - 10.8.16.1
+                      - 1.1.1.1
+                    routes:
+                    - to: default
+                      via: 10.8.16.1
+                  enp90s0:
+                    dhcp4: false
+                    dhcp6: false
+                    optional: true
+                renderer: networkd
+                version: 2
+                vlans:
+                  vlan18:
+                    addresses:
+                    - 10.8.18.90/24
+                    id: 18
+                    link: enp87s0
+                  vlan28:
+                    addresses:
+                    - 10.8.28.90/23
+                    id: 28
+                    link: bond0
+                  vlan38:
+                    addresses:
+                    - 10.8.38.90/24
+                    id: 38
+                    link: bond0
+                  vlan48:
+                    addresses:
+                    - 10.8.48.90/24
+                    id: 48
+                    link: bond0
+          when: inventory_hostname == 'k8s-ms01-node-01'
+          
+        - name: Update netplan configuration for node-02
+          copy:
+            dest: /etc/netplan/60-k8s-network.yaml
+            content: |
+              network:
+                bonds:
+                  bond0:
+                    interfaces:
+                    - enp2s0f1np1
+                    - enp2s0f0np0
+                    mtu: 9000
+                    parameters:
+                      lacp-rate: fast
+                      mii-monitor-interval: 100
+                      mode: 802.3ad
+                      transmit-hash-policy: layer2+3
+                ethernets:
+                  enp2s0f0np0:
+                    dhcp4: false
+                    dhcp6: false
+                    optional: true
+                  enp2s0f1np1:
+                    dhcp4: false
+                    dhcp6: false
+                    optional: true
+                  enp87s0:
+                    dhcp4: false
+                    dhcp6: false
+                    optional: true
+                  enp90s0:
+                    addresses:
+                    - 10.8.16.91/24
+                    dhcp4: false
+                    dhcp6: false
+                    nameservers:
+                      addresses:
+                      - 10.8.16.1
+                      - 1.1.1.1
+                    routes:
+                    - to: default
+                      via: 10.8.16.1
+                renderer: networkd
+                version: 2
+                vlans:
+                  vlan18:
+                    addresses:
+                    - 10.8.18.91/24
+                    id: 18
+                    link: enp87s0
+                  vlan28:
+                    addresses:
+                    - 10.8.28.91/23
+                    id: 28
+                    link: bond0
+                  vlan38:
+                    addresses:
+                    - 10.8.38.91/24
+                    id: 38
+                    link: bond0
+                  vlan48:
+                    addresses:
+                    - 10.8.48.91/24
+                    id: 48
+                    link: bond0
+          when: inventory_hostname == 'k8s-ms01-node-02'
+          
+        - name: Apply netplan configuration
+          shell: netplan apply
+          register: netplan_apply
+          
+        - name: Wait for network to stabilize
+          pause:
+            seconds: 5
+            
+        - name: Verify connectivity to control plane VIP
+          shell: |
+            curl -k --connect-timeout 5 https://10.8.18.2:16443/healthz
+          register: api_test
+          failed_when: false
+          
+        - name: Show final status
+          debug:
+            msg: |
+              Netplan apply: {{ 'SUCCESS' if netplan_apply.rc == 0 else 'FAILED' }}
+              API connectivity: {{ 'SUCCESS - Ready to join cluster!' if api_test.rc == 0 else 'FAILED - Check configuration' }}
+              
+    - name: Skip if test failed
+      debug:
+        msg: "Skipping configuration changes because VLAN 18 connectivity test failed"
+      when: vlan_test.rc != 0

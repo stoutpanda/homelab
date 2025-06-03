@@ -1792,9 +1792,57 @@ Run worker node join playbook
 Label worker nodes
 - ✅ Phase 3: Control Plane Setup - Complete
 - ✅ Phase 4: High Availability - Complete
-- 🔄 Phase 5: Worker Node Integration - Next
+- ✅ Phase 5: Worker Node Integration - Complete
 - 🔜 Phase 6: Storage Configuration - Planned
 - 🔜 Phase 7: Application Deployment - Planned
+
+# Kubernetes Homelab Project Tracking - Updated June 2, 2025
+
+## 🎉 Major Milestone: Complete 5-Node Kubernetes Cluster Operational! 🎉
+
+### Today's Achievement (June 2, 2025)
+
+- ✅ **Successfully joined both MS-01 worker nodes to the cluster**
+  - Resolved VLAN connectivity issue by configuring VLAN 18 as tagged
+  - Both worker nodes (k8s-ms01-node-01 and k8s-ms01-node-02) are Ready
+  - Worker nodes labeled with appropriate roles (worker, storage=ceph, node-type=ms01)
+  
+### Network Solution Implemented
+
+- **Issue**: Worker nodes on VLAN 16 (for vPro) couldn't reach control plane on VLAN 18
+- **Solution**: Added VLAN 18 as tagged VLAN on worker node interfaces
+- **Result**: Maintained vPro access while enabling Kubernetes connectivity
+
+### Current Cluster Status
+
+```
+NAME               STATUS   ROLES           AGE    VERSION
+k8s-cp-01          Ready    control-plane   10d    v1.33.1
+k8s-cp-02          Ready    control-plane   7d2h   v1.33.1  
+k8s-cp-03          Ready    control-plane   7d2h   v1.33.1
+k8s-ms01-node-01   Ready    worker          83s    v1.33.1
+k8s-ms01-node-02   Ready    worker          82s    v1.33.1
+```
+
+### Infrastructure Summary
+
+| Component | Count | Type | Purpose |
+|-----------|-------|------|---------|
+| Control Plane | 3 | Raspberry Pi 5 (8GB) | HA Kubernetes masters |
+| Worker Nodes | 2 | Minisforum MS-01 | Compute and storage |
+| Total Nodes | 5 | Mixed | Full production cluster |
+
+### Next Steps
+
+1. **Phase 6: Storage Configuration**
+   - Configure Ceph storage on worker nodes
+   - Utilize 10G network for storage traffic
+   - Create storage classes for persistent volumes
+
+2. **Phase 7: Application Deployment**
+   - Deploy monitoring stack (Prometheus/Grafana)
+   - Install ingress controller
+   - Deploy initial applications
 
 
 
