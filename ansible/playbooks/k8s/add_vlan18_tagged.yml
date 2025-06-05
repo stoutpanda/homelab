@@ -1,0 +1,124 @@
+---
+# add_vlan18_tagged.yml
+- name: Add VLAN 18 as tagged VLAN on worker nodes
+  hosts: worker_nodes
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Backup current netplan configuration
+      shell: cp /etc/netplan/01-netcfg.yaml "/etc/netplan/01-netcfg.yaml.backup.$(date +%Y%m%d_%H%M%S)"
+      
+    - name: Determine which interface to use for VLAN 18
+      set_fact:
+        vlan18_interface: "{{ 'enp87s0' if ansible_hostname == 'k8s-ms01-node-01' else 'enp87s0' }}"
+        
+    - name: Remove existing VLAN 18 IP from physical interfaces
+      shell: |
+        ip addr del 10.8.18.{{ '90' if inventory_hostname == 'k8s-ms01-node-01' else '91' }}/24 dev {{ item }} || true
+      loop:
+        - enp87s0
+        - enp90s0
+      register: ip_removal
+      
+    - name: Create VLAN 18 interface
+      shell: |
+        ip link add link {{ vlan18_interface }} name vlan18 type vlan id 18 || true
+        ip link set vlan18 up
+        ip addr add 10.8.18.{{ '90' if inventory_hostname == 'k8s-ms01-node-01' else '91' }}/24 dev vlan18
+      register: vlan_creation
+      
+    - name: Test connectivity through VLAN 18
+      shell: ping -c 2 -I vlan18 10.8.18.87
+      register: ping_test
+      failed_when: false
+      
+    - name: Show connectivity test results
+      debug:
+        msg: "{{ 'SUCCESS: Can reach control plane via tagged VLAN 18' if ping_test.rc == 0 else 'Testing VLAN 18 connectivity...' }}"
+        
+    - name: Update netplan configuration to make permanent
+      copy:
+        dest: /etc/netplan/01-netcfg.yaml
+        content: |
+          network:
+            version: 2
+            renderer: networkd
+            ethernets:
+              enp2s0f0np0:
+                dhcp4: false
+                dhcp6: false
+                optional: true
+              enp2s0f1np1:
+                dhcp4: false
+                dhcp6: false
+                optional: true
+              enp87s0:
+                dhcp4: false
+                dhcp6: false
+                optional: true
+              enp90s0:
+                addresses:
+                  - "{{ ansible_host }}/24"
+                dhcp4: false
+                dhcp6: false
+                nameservers:
+                  addresses:
+                    - 10.8.16.1
+                    - 1.1.1.1
+                routes:
+                  - to: default
+                    via: 10.8.16.1
+            bonds:
+              bond0:
+                interfaces:
+                  - enp2s0f0np0
+                  - enp2s0f1np1
+                parameters:
+                  mode: 802.3ad
+                  lacp-rate: fast
+                  mii-monitor-interval: 100
+                  transmit-hash-policy: layer3+4
+                mtu: 9000
+                dhcp4: false
+                dhcp6: false
+            vlans:
+              vlan18:
+                id: 18
+                link: {{ vlan18_interface }}
+                addresses:
+                  - "{{ '10.8.18.90/24' if inventory_hostname == 'k8s-ms01-node-01' else '10.8.18.91/24' }}"
+              vlan28:
+                id: 28
+                link: bond0
+                addresses:
+                  - "{{ '10.8.28.90/23' if inventory_hostname == 'k8s-ms01-node-01' else '10.8.28.91/23' }}"
+              vlan38:
+                id: 38
+                link: bond0
+                addresses:
+                  - "{{ '10.8.38.90/24' if inventory_hostname == 'k8s-ms01-node-01' else '10.8.38.91/24' }}"
+              vlan48:
+                id: 48
+                link: bond0
+                addresses:
+                  - "{{ '10.8.48.90/24' if inventory_hostname == 'k8s-ms01-node-01' else '10.8.48.91/24' }}"
+      when: ping_test.rc == 0
+      
+    - name: Apply netplan configuration
+      shell: netplan apply
+      when: ping_test.rc == 0
+      
+    - name: Final connectivity test
+      shell: |
+        sleep 5
+        curl -k --connect-timeout 5 https://10.8.18.2:16443/healthz
+      register: api_test
+      failed_when: false
+      when: ping_test.rc == 0
+      
+    - name: Show final results
+      debug:
+        msg: |
+          VLAN 18 connectivity: {{ 'SUCCESS' if ping_test.rc == 0 else 'FAILED - Check UniFi VLAN tagging' }}
+          API connectivity: {{ 'SUCCESS - Ready to join cluster' if api_test.rc is defined and api_test.rc == 0 else 'Still testing...' }}
