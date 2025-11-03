@@ -10,7 +10,7 @@ This document provides a comprehensive reference for all hardware nodes, network
 |----------|------|----------|-----|-----|---------|--------|
 | pve-ms01-01 | Proxmox Host | Minisforum MS-01 | Intel i9-13900H (14C/20T) | 96GB DDR5 | 2TB NVMe + 4TB NVMe | Active |
 | pve-ms01-02 | Proxmox Host | Minisforum MS-01 | Intel i9-13900H (14C/20T) | 96GB DDR5 | 2TB NVMe + 4TB NVMe | Active |
-| pve-aimax-01 | Proxmox Host | AMD AI Max | _TBD_ | _TBD_ | _TBD_ | Planning |
+| pve-aimax-01 | Proxmox Host | Framework Desktop 128GB | AMD Ryzen AI 9 395 (12C) | 128GB DDR5 | 1TB NVMe + 4TB NVMe | Planning |
 
 ---
 
@@ -82,28 +82,35 @@ This document provides a comprehensive reference for all hardware nodes, network
 
 ---
 
-### pve-aimax-01 (AMD AI Max)
+### pve-aimax-01 (Framework Desktop 128GB)
 
 #### System Specifications
 | Component | Details |
 |-----------|---------|
-| **CPU** | _TBD_ |
-| **RAM** | _TBD_ |
-| **Storage** | _TBD_ |
-| **GPU/Accelerator** | _TBD_ |
-| **Chipset** | _TBD_ |
+| **CPU** | AMD Ryzen AI 9 395 (Strix Point)<br>- 12 cores (Zen 5 architecture)<br>- Base: TBD, Boost: up to 5.1 GHz<br>- Integrated NPU (50 TOPS AI acceleration) |
+| **RAM** | 128GB DDR5 |
+| **Storage** | **Slot 1:** 1TB NVMe Gen4 (System)<br>**Slot 2:** 4TB NVMe Gen4 (Ceph OSD) |
+| **GPU/Accelerator** | AMD Radeon 890M (integrated, RDNA 3.5)<br>- 16 Compute Units<br>- NPU for AI/ML workloads (50 TOPS) |
+| **Chipset** | AMD (Framework Desktop platform) |
 
 #### Network Interfaces
 | Interface | Type | Speed | MAC Address | Description |
 |-----------|------|-------|-------------|-------------|
-| _TBD_ | _TBD_ | _TBD_ | _TBD_ | Management Interface |
-| _TBD_ | _TBD_ | _TBD_ | _TBD_ | Secondary Network |
+| eno1 | RJ45 (Realtek 2.5GbE) | 2.5GbE | _TBD_ | Built-in Management Interface |
+| enp1s0f0 | RJ45 (Intel X550-T2) | 10GbE | _TBD_ | Storage Network (Port 1) |
+| enp1s0f1 | RJ45 (Intel X550-T2) | 10GbE | _TBD_ | Storage Network (Port 2) |
 
 #### Management Interface
 | Feature | Details |
 |---------|---------|
-| **BMC/IPMI** | _TBD_ |
-| **Management IP** | _TBD_ |
+| **KVM-over-IP** | JetKVM (planned) |
+| **Management IP** | 10.8.16.12 (Proxmox), 10.8.16.92 (JetKVM, TBD) |
+| **Access** | HTTP/HTTPS, VNC via JetKVM |
+
+#### PCIe Expansion
+| Slot | Type | Installed Device |
+|------|------|------------------|
+| PCIe x4 (Gen4) | Low-profile | Intel X550-T2 Dual-Port 10GbE NIC |
 
 ---
 
@@ -250,9 +257,10 @@ This document provides a comprehensive reference for all hardware nodes, network
 #### pve-aimax-01
 | Interface | VLAN | IP Address | Subnet | Gateway | Purpose |
 |-----------|------|------------|--------|---------|---------|
-| _TBD_ | 16 | 10.8.16.12 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
-| _TBD_ | 48 | 10.8.48.12 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
-| BMC/IPMI | 16 | 10.8.16.92 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management |
+| eno1 | 16 | 10.8.16.12 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
+| eno1 | 1 | 10.0.1.x (DHCP) | 10.0.1.0/24 | 10.0.1.1 | Optional secondary interface |
+| bond0 (enp1s0f0 + enp1s0f1) | 48 | 10.8.48.12 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
+| JetKVM | 16 | 10.8.16.92 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management (KVM-over-IP) |
 
 ---
 
@@ -277,11 +285,11 @@ This document provides a comprehensive reference for all hardware nodes, network
 
 ### Storage Network Topology
 ```
-pve-ms01-01 [SFP+ Dual Port] ──┐
-                                ├─── MikroTik CRS309 (10G Storage Switch)
-pve-ms01-02 [SFP+ Dual Port] ──┤
-                                │
-pve-aimax-01 [TBD]             ─┘
+pve-ms01-01 [SFP+ Dual Port X710] ──┐
+                                     ├─── MikroTik CRS309 (10G Storage Switch)
+pve-ms01-02 [SFP+ Dual Port X710] ──┤
+                                     │
+pve-aimax-01 [RJ45 Dual Port X550-T2] ─┘
 ```
 
 ### Management Network Topology
@@ -290,7 +298,7 @@ pve-ms01-01 [enp87s0 2.5G] ──┐
                               ├─── USW-Enterprise-8-PoE ──── UDM-Pro
 pve-ms01-02 [enp87s0 2.5G] ──┤
                               │
-pve-aimax-01 [TBD]           ─┘
+pve-aimax-01 [eno1 2.5G]    ─┘
 ```
 
 ---
@@ -306,7 +314,7 @@ pve-aimax-01 [TBD]           ─┘
 ### Storage Performance
 - **NVMe Gen4 Read:** ~7000 MB/s per drive
 - **NVMe Gen4 Write:** ~5000 MB/s per drive
-- **Total Raw Storage:** 12TB NVMe (6TB per MS-01) + _TBD_ (AMD AI Max)
+- **Total Raw Storage:** 17TB NVMe (6TB per MS-01 + 5TB Framework Desktop)
 
 ---
 
@@ -317,9 +325,9 @@ pve-aimax-01 [TBD]           ─┘
 |------|------|---------|-----|-----|
 | pve-ms01-01 | ~35W | ~75W | ~150W | 19V/120W |
 | pve-ms01-02 | ~35W | ~75W | ~150W | 19V/120W |
-| pve-aimax-01 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| pve-aimax-01 | ~45W | ~95W | ~200W | ATX PSU |
 
-**Total Cluster Power:** ~70W idle, ~150W typical, ~300W+ maximum (excluding AMD AI Max)
+**Total Cluster Power:** ~115W idle, ~245W typical, ~500W maximum
 
 ---
 

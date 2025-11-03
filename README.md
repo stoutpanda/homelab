@@ -7,7 +7,7 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
 ## Quick Overview
 
 ### Infrastructure Stack
-- **Layer 1 - Hardware:** 3-node Proxmox cluster (2x MS-01 + 1x AMD AI Max)
+- **Layer 1 - Hardware:** 3-node Proxmox cluster (2x MS-01 + 1x Framework Desktop)
 - **Layer 2 - Storage:** Ceph distributed block storage with 3-way replication
 - **Layer 3 - Networking:** Multi-VLAN design with dedicated 10GbE storage network
 - **Layer 4 - Kubernetes:** 3-node Talos OS cluster with VLAN-backed pod networking
@@ -25,7 +25,7 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
 - **LoadBalancer Services:** MetalLB for native LoadBalancer support
 - **Performance:** NVMe Gen4 storage, bonded 10GbE, Cilium eBPF networking
 - **Immutable Infrastructure:** Talos OS for declarative, API-managed Kubernetes
-- **AI/ML Ready:** Dedicated AMD AI Max node with GPU passthrough support
+- **AI/ML Ready:** Dedicated Framework Desktop node with NPU and iGPU for AI workloads
 
 ---
 
@@ -67,7 +67,7 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
          └───┬──────┬─────┬───┘         │
              │      │     │             │
     ┌────────┴─┐ ┌─┴────────┐ ┌────────┴─────┐
-    │ MS-01-01 │ │ MS-01-02 │ │  AI Max-01   │
+    │ MS-01-01 │ │ MS-01-02 │ │ Framework-01 │
     │ Proxmox  │ │ Proxmox  │ │   Proxmox    │
     │  Node 1  │ │  Node 2  │ │    Node 3    │
     └──────────┘ └──────────┘ └──────────────┘
@@ -140,9 +140,16 @@ See [KUBERNETES-TALOS.md](./KUBERNETES-TALOS.md) for complete Kubernetes documen
   - 2x 10GbE SFP+ (Intel X710) in LACP bond
 - **Management:** Intel vPro with AMT 16.1
 
-#### pve-aimax-01 (AMD AI Max)
-- **Specifications:** TBD
-- **Primary Use:** AI/ML workloads with GPU passthrough
+#### pve-aimax-01 (Framework Desktop 128GB)
+- **CPU:** AMD Ryzen AI 9 395 (12C, Zen 5, up to 5.1 GHz)
+- **RAM:** 128GB DDR5
+- **Storage:** 1TB + 4TB NVMe Gen4 (5TB total)
+- **GPU:** AMD Radeon 890M (integrated, RDNA 3.5)
+- **NPU:** 50 TOPS AI acceleration
+- **Network:**
+  - 1x 2.5GbE RJ45 (Realtek, built-in)
+  - 2x 10GbE RJ45 (Intel X550-T2 PCIe card) in LACP bond
+- **Management:** JetKVM (KVM-over-IP, planned)
 
 See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete hardware details and IP allocations.
 
@@ -161,8 +168,9 @@ See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete hardware details and I
 
 ### Total Capacity
 - **MS-01 Nodes:** 12TB raw (6TB × 2 nodes)
-- **AMD AI Max:** TBD
-- **Usable (after 3x replication):** ~4TB (from MS-01s)
+- **Framework Desktop:** 5TB raw (1TB + 4TB)
+- **Total Raw:** 17TB NVMe across 3 nodes
+- **Usable (after 3x replication):** ~5.7TB
 
 See [PROXMOX-CLUSTER.md](./PROXMOX-CLUSTER.md) for Ceph configuration details.
 
@@ -221,7 +229,8 @@ vzdump 100 --mode snapshot --storage local
 ### Current State
 - [ ] Hardware acquired
   - [x] 2x Minisforum MS-01
-  - [ ] 1x AMD AI Max
+  - [x] 1x Framework Desktop 128GB
+  - [ ] JetKVM for Framework Desktop
 - [ ] Network infrastructure configured
   - [ ] VLANs created on UDM-Pro
   - [ ] Switch port profiles configured
@@ -256,7 +265,7 @@ This homelab serves as a hands-on learning platform for:
 - **Distributed Storage:** Ceph architecture and operations
 - **High Availability:** Cluster quorum, fencing, and automatic failover
 - **Networking:** VLAN segmentation, bonding, jumbo frames, and performance optimization
-- **AI/ML Infrastructure:** GPU passthrough and resource allocation for AI workloads
+- **AI/ML Infrastructure:** NPU and iGPU passthrough for AI workloads on AMD platform
 
 ---
 
