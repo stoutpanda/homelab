@@ -1,0 +1,361 @@
+# Proxmox Homelab Infrastructure
+
+## Overview
+This document provides a comprehensive reference for all hardware nodes, network interfaces, IP allocations, and physical specifications for the Proxmox homelab cluster.
+
+## Cluster Nodes
+
+### Node Summary
+| Hostname | Role | Hardware | CPU | RAM | Storage | Status |
+|----------|------|----------|-----|-----|---------|--------|
+| pve-ms01-01 | Proxmox Host | Minisforum MS-01 | Intel i9-13900H (14C/20T) | 96GB DDR5 | 2TB NVMe + 4TB NVMe | Active |
+| pve-ms01-02 | Proxmox Host | Minisforum MS-01 | Intel i9-13900H (14C/20T) | 96GB DDR5 | 2TB NVMe + 4TB NVMe | Active |
+| pve-aimax-01 | Proxmox Host | AMD AI Max | _TBD_ | _TBD_ | _TBD_ | Planning |
+
+---
+
+## Detailed Hardware Inventory
+
+### pve-ms01-01 (Minisforum MS-01)
+
+#### System Specifications
+| Component | Details |
+|-----------|---------|
+| **CPU** | Intel Core i9-13900H (Raptor Lake)<br>- 14 cores (6P + 8E), 20 threads<br>- Base: 2.6 GHz, Boost: 5.4 GHz<br>- 24MB L3 Cache |
+| **RAM** | 96GB DDR5-4800 (2x 48GB SO-DIMM) |
+| **Storage** | **Slot 1:** 2TB NVMe Gen4 (System)<br>**Slot 2:** 4TB NVMe Gen4 (VM Storage) |
+| **Chipset** | Intel HM770 |
+| **BIOS/UEFI** | AMI UEFI (vPro enabled) |
+
+#### Network Interfaces
+| Interface | Type | Speed | MAC Address | Description |
+|-----------|------|-------|-------------|-------------|
+| enp87s0 | RJ45 (Intel i226-V) | 2.5GbE | _TBD_ | Management Interface |
+| enp88s0 | RJ45 (Intel i226-V) | 2.5GbE | _TBD_ | Secondary Network |
+| enp2s0f0np0 | SFP+ (Intel X710) | 10GbE | _TBD_ | Storage Network (SFP+ Port 1) |
+| enp2s0f1np1 | SFP+ (Intel X710) | 10GbE | _TBD_ | Storage Network (SFP+ Port 2) |
+
+#### Management Interface
+| Feature | Details |
+|---------|---------|
+| **vPro/AMT** | Intel vPro with AMT 16.1 |
+| **Management IP** | _TBD_ |
+| **Access** | HTTP/HTTPS, VNC, SOL |
+
+#### PCIe Expansion
+| Slot | Type | Installed Device |
+|------|------|------------------|
+| PCIe x16 (Gen4) | Full-height | Intel X710-DA2 Dual SFP+ 10GbE NIC |
+
+---
+
+### pve-ms01-02 (Minisforum MS-01)
+
+#### System Specifications
+| Component | Details |
+|-----------|---------|
+| **CPU** | Intel Core i9-13900H (Raptor Lake)<br>- 14 cores (6P + 8E), 20 threads<br>- Base: 2.6 GHz, Boost: 5.4 GHz<br>- 24MB L3 Cache |
+| **RAM** | 96GB DDR5-4800 (2x 48GB SO-DIMM) |
+| **Storage** | **Slot 1:** 2TB NVMe Gen4 (System)<br>**Slot 2:** 4TB NVMe Gen4 (VM Storage) |
+| **Chipset** | Intel HM770 |
+| **BIOS/UEFI** | AMI UEFI (vPro enabled) |
+
+#### Network Interfaces
+| Interface | Type | Speed | MAC Address | Description |
+|-----------|------|-------|-------------|-------------|
+| enp87s0 | RJ45 (Intel i226-V) | 2.5GbE | _TBD_ | Management Interface |
+| enp88s0 | RJ45 (Intel i226-V) | 2.5GbE | _TBD_ | Secondary Network |
+| enp2s0f0np0 | SFP+ (Intel X710) | 10GbE | _TBD_ | Storage Network (SFP+ Port 1) |
+| enp2s0f1np1 | SFP+ (Intel X710) | 10GbE | _TBD_ | Storage Network (SFP+ Port 2) |
+
+#### Management Interface
+| Feature | Details |
+|---------|---------|
+| **vPro/AMT** | Intel vPro with AMT 16.1 |
+| **Management IP** | _TBD_ |
+| **Access** | HTTP/HTTPS, VNC, SOL |
+
+#### PCIe Expansion
+| Slot | Type | Installed Device |
+|------|------|------------------|
+| PCIe x16 (Gen4) | Full-height | Intel X710-DA2 Dual SFP+ 10GbE NIC |
+
+---
+
+### pve-aimax-01 (AMD AI Max)
+
+#### System Specifications
+| Component | Details |
+|-----------|---------|
+| **CPU** | _TBD_ |
+| **RAM** | _TBD_ |
+| **Storage** | _TBD_ |
+| **GPU/Accelerator** | _TBD_ |
+| **Chipset** | _TBD_ |
+
+#### Network Interfaces
+| Interface | Type | Speed | MAC Address | Description |
+|-----------|------|-------|-------------|-------------|
+| _TBD_ | _TBD_ | _TBD_ | _TBD_ | Management Interface |
+| _TBD_ | _TBD_ | _TBD_ | _TBD_ | Secondary Network |
+
+#### Management Interface
+| Feature | Details |
+|---------|---------|
+| **BMC/IPMI** | _TBD_ |
+| **Management IP** | _TBD_ |
+
+---
+
+## Virtual Machines (Talos Kubernetes Cluster)
+
+### VM Summary
+| VM Name | Host Node | Role | vCPU | vRAM | Disk | Status |
+|---------|-----------|------|------|------|------|--------|
+| talos-k8s-01 | pve-ms01-01 | K8s Control Plane + Worker | 8 | 16GB | 100GB | Planned |
+| talos-k8s-02 | pve-ms01-02 | K8s Control Plane + Worker | 8 | 16GB | 100GB | Planned |
+| talos-k8s-03 | pve-aimax-01 | K8s Control Plane + Worker | 8 | 16GB | 100GB | Planned |
+
+---
+
+### talos-k8s-01 (Proxmox VM on pve-ms01-01)
+
+#### VM Specifications
+| Component | Details |
+|-----------|---------|
+| **VM ID** | 101 |
+| **OS** | Talos Linux (latest stable) |
+| **vCPU** | 8 cores (pinned to physical cores recommended) |
+| **vRAM** | 16GB (dedicated, no ballooning) |
+| **Disk** | 100GB (Ceph RBD storage) |
+| **Boot Mode** | UEFI |
+| **Machine Type** | q35 |
+
+#### Virtual Network Interfaces
+| Interface | Type | VLAN | MAC Address | Bridge | Description |
+|-----------|------|------|-------------|--------|-------------|
+| net0 (eth0) | VirtIO | 16 | _TBD_ | vmbr0 | Management / Talos API |
+| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Pod Network (CNI) |
+| net2 (eth2) | VirtIO | 58 | _TBD_ | vmbr0 | LoadBalancer (MetalLB) |
+
+#### IP Configuration
+| Interface | VLAN | IP Address | Subnet | Purpose |
+|-----------|------|------------|--------|---------|
+| eth0 | 16 | 10.8.16.20 | 10.8.16.0/24 | Talos API, kubectl, talosctl |
+| eth1 | 28 | 10.8.28.1 | 10.8.28.0/24 | Pod subnet (254 pods max) |
+| eth2 | 58 | 10.8.58.10 | 10.8.58.0/27 | MetalLB speaker interface (optional) |
+
+---
+
+### talos-k8s-02 (Proxmox VM on pve-ms01-02)
+
+#### VM Specifications
+| Component | Details |
+|-----------|---------|
+| **VM ID** | 102 |
+| **OS** | Talos Linux (latest stable) |
+| **vCPU** | 8 cores (pinned to physical cores recommended) |
+| **vRAM** | 16GB (dedicated, no ballooning) |
+| **Disk** | 100GB (Ceph RBD storage) |
+| **Boot Mode** | UEFI |
+| **Machine Type** | q35 |
+
+#### Virtual Network Interfaces
+| Interface | Type | VLAN | MAC Address | Bridge | Description |
+|-----------|------|------|-------------|--------|-------------|
+| net0 (eth0) | VirtIO | 16 | _TBD_ | vmbr0 | Management / Talos API |
+| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Pod Network (CNI) |
+| net2 (eth2) | VirtIO | 58 | _TBD_ | vmbr0 | LoadBalancer (MetalLB) |
+
+#### IP Configuration
+| Interface | VLAN | IP Address | Subnet | Purpose |
+|-----------|------|------------|--------|---------|
+| eth0 | 16 | 10.8.16.21 | 10.8.16.0/24 | Talos API, kubectl, talosctl |
+| eth1 | 28 | 10.8.29.1 | 10.8.29.0/24 | Pod subnet (254 pods max) |
+| eth2 | 58 | 10.8.58.11 | 10.8.58.0/27 | MetalLB speaker interface (optional) |
+
+---
+
+### talos-k8s-03 (Proxmox VM on pve-aimax-01)
+
+#### VM Specifications
+| Component | Details |
+|-----------|---------|
+| **VM ID** | 103 |
+| **OS** | Talos Linux (latest stable) |
+| **vCPU** | 8 cores (pinned to physical cores recommended) |
+| **vRAM** | 16GB (dedicated, no ballooning) |
+| **Disk** | 100GB (Ceph RBD storage) |
+| **Boot Mode** | UEFI |
+| **Machine Type** | q35 |
+
+#### Virtual Network Interfaces
+| Interface | Type | VLAN | MAC Address | Bridge | Description |
+|-----------|------|------|-------------|--------|-------------|
+| net0 (eth0) | VirtIO | 16 | _TBD_ | vmbr0 | Management / Talos API |
+| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Pod Network (CNI) |
+| net2 (eth2) | VirtIO | 58 | _TBD_ | vmbr0 | LoadBalancer (MetalLB) |
+
+#### IP Configuration
+| Interface | VLAN | IP Address | Subnet | Purpose |
+|-----------|------|------------|--------|---------|
+| eth0 | 16 | 10.8.16.22 | 10.8.16.0/24 | Talos API, kubectl, talosctl |
+| eth1 | 28 | 10.8.28.100 | 10.8.28.0/24 (partial) | Pod subnet (~100 pods) |
+| eth2 | 58 | 10.8.58.12 | 10.8.58.0/27 | MetalLB speaker interface (optional) |
+
+---
+
+### Talos Cluster Configuration
+
+#### Cluster Summary
+| Parameter | Value |
+|-----------|-------|
+| **Cluster Name** | homelab-k8s |
+| **Kubernetes Version** | Latest stable (1.31+) |
+| **Control Plane Endpoint** | 10.8.18.2:6443 (optional VIP) or<br>10.8.16.20:6443 (direct to node 1) |
+| **CNI** | Cilium (native routing mode) |
+| **Pod CIDR** | 10.8.28.0/23 (VLAN-backed) |
+| **Service CIDR** | 10.244.0.0/16 (internal) |
+| **Talos Version** | Latest stable (v1.8+) |
+
+#### Access Methods
+| Method | Endpoint | Port | Purpose |
+|--------|----------|------|---------|
+| **talosctl** | 10.8.16.20-22 | 50000 | Talos API access |
+| **kubectl** | 10.8.16.20 or 10.8.18.2 | 6443 | Kubernetes API (direct or VIP) |
+| **Kubernetes Dashboard** | 10.8.58.11 | 443 | Web UI (if deployed) |
+
+---
+
+## Network Configuration
+
+### IP Allocation Table
+
+#### pve-ms01-01
+| Interface | VLAN | IP Address | Subnet | Gateway | Purpose |
+|-----------|------|------------|--------|---------|---------|
+| enp87s0 | 16 | 10.8.16.10 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
+| enp88s0 | 1 | 10.0.1.x (DHCP) | 10.0.1.0/24 | 10.0.1.1 | Optional secondary interface |
+| bond0 (enp2s0f0np0 + enp2s0f1np1) | 48 | 10.8.48.10 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
+| vPro/AMT | 16 | 10.8.16.90 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management |
+
+#### pve-ms01-02
+| Interface | VLAN | IP Address | Subnet | Gateway | Purpose |
+|-----------|------|------------|--------|---------|---------|
+| enp87s0 | 16 | 10.8.16.11 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
+| enp88s0 | 1 | 10.0.1.x (DHCP) | 10.0.1.0/24 | 10.0.1.1 | Optional secondary interface |
+| bond0 (enp2s0f0np0 + enp2s0f1np1) | 48 | 10.8.48.11 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
+| vPro/AMT | 16 | 10.8.16.91 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management |
+
+#### pve-aimax-01
+| Interface | VLAN | IP Address | Subnet | Gateway | Purpose |
+|-----------|------|------------|--------|---------|---------|
+| _TBD_ | 16 | 10.8.16.12 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
+| _TBD_ | 48 | 10.8.48.12 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
+| BMC/IPMI | 16 | 10.8.16.92 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management |
+
+---
+
+## Network Infrastructure Devices
+
+### Switches
+| Device | Model | IP Address | Location | Notes |
+|--------|-------|------------|----------|-------|
+| Main Switch | UniFi Enterprise 24 PoE | 10.0.1.239 | Server Rack | Core routing |
+| K8s Main Switch | USW-Flex-2.5G | 10.0.1.80 | Server Rack | _May be repurposed_ |
+| Server Switch | USW-Enterprise-8-PoE | 10.0.1.238 | Server Rack | Server connectivity |
+| Storage Switch | MikroTik CRS309-1G-8S+IN | 10.0.1.82 | Server Rack | 10G storage network |
+
+### Gateway/Router
+| Device | Model | IP Address | Function |
+|--------|-------|------------|----------|
+| UDM-Pro | UniFi Dream Machine Pro | 10.0.1.1 | Core router, VLAN gateway |
+
+---
+
+## Physical Connections
+
+### Storage Network Topology
+```
+pve-ms01-01 [SFP+ Dual Port] ──┐
+                                ├─── MikroTik CRS309 (10G Storage Switch)
+pve-ms01-02 [SFP+ Dual Port] ──┤
+                                │
+pve-aimax-01 [TBD]             ─┘
+```
+
+### Management Network Topology
+```
+pve-ms01-01 [enp87s0 2.5G] ──┐
+                              ├─── USW-Enterprise-8-PoE ──── UDM-Pro
+pve-ms01-02 [enp87s0 2.5G] ──┤
+                              │
+pve-aimax-01 [TBD]           ─┘
+```
+
+---
+
+## Performance Specifications
+
+### Network Performance
+| Link | Speed | Technology | MTU | Notes |
+|------|-------|------------|-----|-------|
+| Management | 2.5 Gbps | Copper (Cat6) | 1500 | Standard Ethernet |
+| Storage | 20 Gbps | SFP+ DAC/Fiber LACP Bond | 9000 | Jumbo frames enabled |
+
+### Storage Performance
+- **NVMe Gen4 Read:** ~7000 MB/s per drive
+- **NVMe Gen4 Write:** ~5000 MB/s per drive
+- **Total Raw Storage:** 12TB NVMe (6TB per MS-01) + _TBD_ (AMD AI Max)
+
+---
+
+## Power Management
+
+### Power Consumption Estimates
+| Node | Idle | Typical | Max | PSU |
+|------|------|---------|-----|-----|
+| pve-ms01-01 | ~35W | ~75W | ~150W | 19V/120W |
+| pve-ms01-02 | ~35W | ~75W | ~150W | 19V/120W |
+| pve-aimax-01 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+
+**Total Cluster Power:** ~70W idle, ~150W typical, ~300W+ maximum (excluding AMD AI Max)
+
+---
+
+## Firmware and Software Versions
+
+### Proxmox VE
+| Node | Proxmox Version | Kernel | Installation Date |
+|------|----------------|--------|-------------------|
+| pve-ms01-01 | _TBD_ | _TBD_ | _TBD_ |
+| pve-ms01-02 | _TBD_ | _TBD_ | _TBD_ |
+| pve-aimax-01 | _TBD_ | _TBD_ | _TBD_ |
+
+### Hardware Firmware
+| Node | BIOS/UEFI | BMC/vPro | NIC Firmware |
+|------|-----------|----------|--------------|
+| pve-ms01-01 | _TBD_ | _TBD_ | _TBD_ |
+| pve-ms01-02 | _TBD_ | _TBD_ | _TBD_ |
+| pve-aimax-01 | _TBD_ | _TBD_ | _TBD_ |
+
+---
+
+## Notes
+
+### Known Issues
+- _Document any hardware quirks, driver issues, or compatibility notes here_
+
+### Future Expansion Plans
+- _Document potential hardware additions, upgrades, or changes_
+
+### Maintenance Schedule
+- **Firmware Updates:** Quarterly
+- **Hardware Inspection:** Bi-annually
+- **Network Cable Testing:** Annually
+
+---
+
+**Last Updated:** 2025-11-03
+**Document Version:** 1.0
+**Maintained By:** Jason
