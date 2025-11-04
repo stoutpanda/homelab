@@ -38,13 +38,14 @@ This is a homelab infrastructure management repository focused on deploying and 
 ### Core Documentation Files
 | File | Purpose | Update Frequency |
 |------|---------|------------------|
-| `INFRASTRUCTURE.md` | Hardware inventory, interfaces, IP allocations | When hardware changes or IPs are assigned |
-| `NETWORK.md` | VLAN design, network topology, switch configs | When network design changes |
-| `PROXMOX-CLUSTER.md` | Cluster config, Ceph setup, HA operations | When cluster configuration changes |
+| `NETWORK-REFERENCE.md` | **Complete network reference: VLANs, subnets, IPs, interfaces** | When any network/IP changes occur |
+| `KUBERNETES-TALOS.md` | Kubernetes/Talos configuration and operations | When K8s configuration changes |
 | `README.md` | Project overview and quick reference | As needed for major milestones |
+| `CLAUDE.md` | AI assistant guidelines | When project guidelines change |
 
 ### Archive
 - `archive/kubernetes-2025/`: Previous K8s project documentation (for reference only)
+- `archive/proxmox-planning-2025/`: Original planning docs (INFRASTRUCTURE, NETWORK, PROXMOX-CLUSTER, IP-MIGRATION-GUIDE)
 
 ## Project Progression
 
@@ -96,9 +97,8 @@ The project follows a methodical step-by-step approach:
 ## Documentation Standards
 
 ### When to Update Documentation
-- **INFRASTRUCTURE.md:** Anytime hardware is added, removed, or reconfigured; when IPs are assigned
-- **NETWORK.md:** When VLANs change, subnets are modified, or network topology is updated
-- **PROXMOX-CLUSTER.md:** When cluster configuration changes, Ceph is modified, or new operational procedures are added
+- **NETWORK-REFERENCE.md:** When any hardware changes, IPs are assigned, VLANs change, subnets modified, or topology updated
+- **KUBERNETES-TALOS.md:** When Kubernetes or Talos configuration changes
 - **README.md:** For major project milestones or significant changes
 
 ### Documentation Best Practices

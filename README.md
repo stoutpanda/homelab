@@ -34,15 +34,14 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
 ### Core Documentation
 | Document | Description |
 |----------|-------------|
-| [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) | Hardware inventory, Talos VMs, network interfaces, and IP allocations |
-| [NETWORK.md](./NETWORK.md) | VLAN design, network topology, switch configurations, and routing |
-| [PROXMOX-CLUSTER.md](./PROXMOX-CLUSTER.md) | Proxmox cluster, Ceph storage, HA configuration, and operations |
+| **[NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md)** | **Complete network reference: VLANs, subnets, IPs, interfaces, topology** |
 | [KUBERNETES-TALOS.md](./KUBERNETES-TALOS.md) | Kubernetes on Talos OS, CNI, MetalLB, service exposure, and operations |
+| [CLAUDE.md](./CLAUDE.md) | Guidelines for AI assistant when working on this project |
 
-### Quick Reference
+### Archived Documentation
 | Document | Description |
 |----------|-------------|
-| [CLAUDE.md](./CLAUDE.md) | Guidelines for AI assistant when working on this project |
+| [archive/proxmox-planning-2025/](./archive/proxmox-planning-2025/) | Original planning docs (INFRASTRUCTURE, NETWORK, PROXMOX-CLUSTER, IP-MIGRATION-GUIDE) |
 
 ---
 
@@ -81,17 +80,21 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
 
 ## Network Summary
 
-### VLAN Structure (Reusing 10.8.x from Previous K8s Setup)
-| VLAN | Subnet | Purpose | MTU |
-|------|--------|---------|-----|
-| 1 | 10.0.1.0/24 | Network Infrastructure | 1500 |
-| 16 | 10.8.16.0/24 | Proxmox + Talos Management | 1500 |
-| 18 | 10.8.18.0/24 | K8s Control Plane VIP (optional) | 1500 |
-| 28 | 10.8.28.0/23 | K8s Pod Network (512 IPs) | 1500 |
-| 48 | 10.8.48.0/24 | Ceph Storage | 9000 |
-| 58 | 10.8.58.0/27 | K8s LoadBalancer IPs (32 IPs) | 1500 |
+### Simplified 4-VLAN Structure
+| VLAN | Subnet | Purpose | MTU | Notes |
+|------|--------|---------|-----|-------|
+| 1 | 10.0.1.0/24 | Infrastructure | 1500 | Switches, gateway |
+| **16** | **10.8.16.0/24** | **Management** | **1500** | **Proxmox + Talos VMs** |
+| **28** | **10.8.28.0/22** | **Workloads** | **1500** | **Pods + LoadBalancer (1024 IPs)** |
+| **48** | **10.8.48.0/24** | **Storage** | **9000** | **Ceph cluster traffic** |
 
-See [NETWORK.md](./NETWORK.md) and [IP-MIGRATION-GUIDE.md](./IP-MIGRATION-GUIDE.md) for complete details.
+**Key Simplifications:**
+- ✅ **Removed VLAN 18:** No separate VIP VLAN (use direct endpoint)
+- ✅ **Removed VLAN 58:** LoadBalancer IPs merged into VLAN 28
+- ✅ **Expanded VLAN 28:** From /23 to /22 (512 → 1024 IPs)
+- ✅ **2 interfaces per VM:** Down from 3 (simpler configuration)
+
+See [NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md) for complete network details.
 
 ---
 
@@ -101,13 +104,13 @@ See [NETWORK.md](./NETWORK.md) and [IP-MIGRATION-GUIDE.md](./IP-MIGRATION-GUIDE.
 - **3 Talos VMs:** One per Proxmox host (talos-k8s-01, talos-k8s-02, talos-k8s-03)
 - **Role:** Each node is both control plane and worker
 - **Resources:** 8 vCPU, 16GB RAM, 100GB disk per VM
-- **Network:** 3 interfaces per VM (management, pod network, LoadBalancer)
+- **Network:** 2 interfaces per VM (management on VLAN 16, workloads on VLAN 28)
 
 ### Networking
 - **CNI:** Cilium with native routing (no overlay encapsulation)
-- **Pod Network:** VLAN 28 (10.8.28.0/23) with per-node subnets
-- **LoadBalancer:** MetalLB L2 mode on VLAN 58 (10.8.58.10-30)
-- **Ingress:** Traefik on MetalLB LoadBalancer (10.8.58.10)
+- **Pod Network:** VLAN 28 (10.8.28.0/22) with per-node /24 subnets
+- **LoadBalancer:** MetalLB L2 mode on VLAN 28 (10.8.31.10-200, 190 IPs)
+- **Ingress:** Traefik on MetalLB LoadBalancer (10.8.31.10)
 - **Management:** VLAN 16 (10.8.16.20-22 for Talos VMs)
 
 ### Storage
@@ -118,10 +121,10 @@ See [NETWORK.md](./NETWORK.md) and [IP-MIGRATION-GUIDE.md](./IP-MIGRATION-GUIDE.
 ### Service Exposure
 | Service Type | Method | IP Range | Example |
 |--------------|--------|----------|---------|
-| LoadBalancer | MetalLB | 10.8.58.10-30 | Traefik: 10.8.58.10 |
+| LoadBalancer | MetalLB | 10.8.31.10-200 | Traefik: 10.8.31.10 |
 | Ingress | Traefik | Via LoadBalancer IP | http://app.example.com |
 | NodePort | Direct to node | 10.8.16.20-22 | :30000-32767 |
-| K8s API (optional) | VIP | 10.8.18.2:6443 | Control plane HA endpoint |
+| K8s API | Direct | 10.8.16.20:6443 | Control plane endpoint |
 
 See [KUBERNETES-TALOS.md](./KUBERNETES-TALOS.md) for complete Kubernetes documentation.
 
@@ -151,7 +154,7 @@ See [KUBERNETES-TALOS.md](./KUBERNETES-TALOS.md) for complete Kubernetes documen
   - 2x 10GbE RJ45 (Intel X550-T2 PCIe card) in LACP bond
 - **Management:** JetKVM (KVM-over-IP, planned)
 
-See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete hardware details and IP allocations.
+See [NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md) for complete hardware interface details and IP allocations.
 
 ---
 
@@ -172,7 +175,7 @@ See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete hardware details and I
 - **Total Raw:** 17TB NVMe across 3 nodes
 - **Usable (after 3x replication):** ~5.7TB
 
-See [PROXMOX-CLUSTER.md](./PROXMOX-CLUSTER.md) for Ceph configuration details.
+See [archive/proxmox-planning-2025/PROXMOX-CLUSTER.md](./archive/proxmox-planning-2025/PROXMOX-CLUSTER.md) for detailed Ceph and cluster configuration.
 
 ---
 
@@ -282,7 +285,7 @@ This homelab serves as a hands-on learning platform for:
 - **Quarterly:** Apply Proxmox/Ceph updates, firmware updates, capacity planning
 - **Annually:** Hardware inspection, cable testing, DR drills
 
-See [PROXMOX-CLUSTER.md](./PROXMOX-CLUSTER.md) for detailed maintenance procedures.
+See [archive/proxmox-planning-2025/PROXMOX-CLUSTER.md](./archive/proxmox-planning-2025/PROXMOX-CLUSTER.md) for detailed maintenance procedures.
 
 ---
 

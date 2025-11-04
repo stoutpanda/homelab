@@ -12,6 +12,15 @@ This document provides a comprehensive reference for all hardware nodes, network
 | pve-ms01-02 | Proxmox Host | Minisforum MS-01 | Intel i9-13900H (14C/20T) | 96GB DDR5 | 2TB NVMe + 4TB NVMe | Active |
 | pve-aimax-01 | Proxmox Host | Framework Desktop 128GB | AMD Ryzen AI 9 395 (12C) | 128GB DDR5 | 1TB NVMe + 4TB NVMe | Planning |
 
+### Management IP Summary
+| Hostname | Proxmox IP | Out-of-Band Management IP | Management Type | VLAN |
+|----------|------------|---------------------------|-----------------|------|
+| pve-ms01-01 | 10.8.16.10 | 10.8.16.190 | Intel vPro/AMT 16.1 | 16 |
+| pve-ms01-02 | 10.8.16.11 | 10.8.16.191 | Intel vPro/AMT 16.1 | 16 |
+| pve-aimax-01 | 10.8.16.12 | 10.8.16.92 | JetKVM (KVM-over-IP) | 16 |
+
+**Note:** vPro interfaces on MS-01 nodes were configured via MeshCommander during the archived K8s project and remain functional.
+
 ---
 
 ## Detailed Hardware Inventory
@@ -39,8 +48,9 @@ This document provides a comprehensive reference for all hardware nodes, network
 | Feature | Details |
 |---------|---------|
 | **vPro/AMT** | Intel vPro with AMT 16.1 |
-| **Management IP** | _TBD_ |
+| **Management IP** | 10.8.16.190 (VLAN 16) |
 | **Access** | HTTP/HTTPS, VNC, SOL |
+| **Notes** | Configured via MeshCommander in archived K8s project |
 
 #### PCIe Expansion
 | Slot | Type | Installed Device |
@@ -72,8 +82,9 @@ This document provides a comprehensive reference for all hardware nodes, network
 | Feature | Details |
 |---------|---------|
 | **vPro/AMT** | Intel vPro with AMT 16.1 |
-| **Management IP** | _TBD_ |
+| **Management IP** | 10.8.16.191 (VLAN 16) |
 | **Access** | HTTP/HTTPS, VNC, SOL |
+| **Notes** | Configured via MeshCommander in archived K8s project |
 
 #### PCIe Expansion
 | Slot | Type | Installed Device |
@@ -103,9 +114,10 @@ This document provides a comprehensive reference for all hardware nodes, network
 #### Management Interface
 | Feature | Details |
 |---------|---------|
-| **KVM-over-IP** | JetKVM (planned) |
-| **Management IP** | 10.8.16.12 (Proxmox), 10.8.16.92 (JetKVM, TBD) |
+| **KVM-over-IP** | JetKVM (hardware ordered) |
+| **Management IP** | 10.8.16.92 (VLAN 16) |
 | **Access** | HTTP/HTTPS, VNC via JetKVM |
+| **Notes** | IP pre-allocated; device will be configured upon arrival |
 
 #### PCIe Expansion
 | Slot | Type | Installed Device |
@@ -142,15 +154,13 @@ This document provides a comprehensive reference for all hardware nodes, network
 | Interface | Type | VLAN | MAC Address | Bridge | Description |
 |-----------|------|------|-------------|--------|-------------|
 | net0 (eth0) | VirtIO | 16 | _TBD_ | vmbr0 | Management / Talos API |
-| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Pod Network (CNI) |
-| net2 (eth2) | VirtIO | 58 | _TBD_ | vmbr0 | LoadBalancer (MetalLB) |
+| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Workload Network (Pods + LoadBalancer) |
 
 #### IP Configuration
 | Interface | VLAN | IP Address | Subnet | Purpose |
 |-----------|------|------------|--------|---------|
 | eth0 | 16 | 10.8.16.20 | 10.8.16.0/24 | Talos API, kubectl, talosctl |
-| eth1 | 28 | 10.8.28.1 | 10.8.28.0/24 | Pod subnet (254 pods max) |
-| eth2 | 58 | 10.8.58.10 | 10.8.58.0/27 | MetalLB speaker interface (optional) |
+| eth1 | 28 | 10.8.28.1 | 10.8.28.0/24 | Pod subnet (254 pods) + MetalLB binding |
 
 ---
 
@@ -171,15 +181,13 @@ This document provides a comprehensive reference for all hardware nodes, network
 | Interface | Type | VLAN | MAC Address | Bridge | Description |
 |-----------|------|------|-------------|--------|-------------|
 | net0 (eth0) | VirtIO | 16 | _TBD_ | vmbr0 | Management / Talos API |
-| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Pod Network (CNI) |
-| net2 (eth2) | VirtIO | 58 | _TBD_ | vmbr0 | LoadBalancer (MetalLB) |
+| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Workload Network (Pods + LoadBalancer) |
 
 #### IP Configuration
 | Interface | VLAN | IP Address | Subnet | Purpose |
 |-----------|------|------------|--------|---------|
 | eth0 | 16 | 10.8.16.21 | 10.8.16.0/24 | Talos API, kubectl, talosctl |
-| eth1 | 28 | 10.8.29.1 | 10.8.29.0/24 | Pod subnet (254 pods max) |
-| eth2 | 58 | 10.8.58.11 | 10.8.58.0/27 | MetalLB speaker interface (optional) |
+| eth1 | 28 | 10.8.29.1 | 10.8.29.0/24 | Pod subnet (254 pods) + MetalLB binding |
 
 ---
 
@@ -200,15 +208,13 @@ This document provides a comprehensive reference for all hardware nodes, network
 | Interface | Type | VLAN | MAC Address | Bridge | Description |
 |-----------|------|------|-------------|--------|-------------|
 | net0 (eth0) | VirtIO | 16 | _TBD_ | vmbr0 | Management / Talos API |
-| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Pod Network (CNI) |
-| net2 (eth2) | VirtIO | 58 | _TBD_ | vmbr0 | LoadBalancer (MetalLB) |
+| net1 (eth1) | VirtIO | 28 | _TBD_ | vmbr0 | Workload Network (Pods + LoadBalancer) |
 
 #### IP Configuration
 | Interface | VLAN | IP Address | Subnet | Purpose |
 |-----------|------|------------|--------|---------|
 | eth0 | 16 | 10.8.16.22 | 10.8.16.0/24 | Talos API, kubectl, talosctl |
-| eth1 | 28 | 10.8.28.100 | 10.8.28.0/24 (partial) | Pod subnet (~100 pods) |
-| eth2 | 58 | 10.8.58.12 | 10.8.58.0/27 | MetalLB speaker interface (optional) |
+| eth1 | 28 | 10.8.30.1 | 10.8.30.0/24 | Pod subnet (254 pods) + MetalLB binding |
 
 ---
 
@@ -219,18 +225,21 @@ This document provides a comprehensive reference for all hardware nodes, network
 |-----------|-------|
 | **Cluster Name** | homelab-k8s |
 | **Kubernetes Version** | Latest stable (1.31+) |
-| **Control Plane Endpoint** | 10.8.18.2:6443 (optional VIP) or<br>10.8.16.20:6443 (direct to node 1) |
+| **Control Plane Endpoint** | 10.8.16.20:6443 (direct to node 1) |
 | **CNI** | Cilium (native routing mode) |
-| **Pod CIDR** | 10.8.28.0/23 (VLAN-backed) |
-| **Service CIDR** | 10.244.0.0/16 (internal) |
+| **Pod CIDR** | 10.8.28.0/22 (VLAN-backed, 1024 IPs) |
+| **Service CIDR** | 10.96.0.0/12 (internal cluster IPs) |
+| **LoadBalancer Pool** | 10.8.31.10-200 (MetalLB, 190 IPs) |
 | **Talos Version** | Latest stable (v1.8+) |
 
 #### Access Methods
 | Method | Endpoint | Port | Purpose |
 |--------|----------|------|---------|
 | **talosctl** | 10.8.16.20-22 | 50000 | Talos API access |
-| **kubectl** | 10.8.16.20 or 10.8.18.2 | 6443 | Kubernetes API (direct or VIP) |
-| **Kubernetes Dashboard** | 10.8.58.11 | 443 | Web UI (if deployed) |
+| **kubectl** | 10.8.16.20 | 6443 | Kubernetes API (direct connection) |
+| **Traefik Ingress** | 10.8.31.10 | 80, 443 | HTTP/HTTPS ingress |
+| **Kubernetes Dashboard** | 10.8.31.11 | 443 | Web UI (if deployed) |
+| **Grafana** | 10.8.31.12 | 80, 443 | Monitoring dashboard |
 
 ---
 
@@ -244,7 +253,7 @@ This document provides a comprehensive reference for all hardware nodes, network
 | enp87s0 | 16 | 10.8.16.10 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
 | enp88s0 | 1 | 10.0.1.x (DHCP) | 10.0.1.0/24 | 10.0.1.1 | Optional secondary interface |
 | bond0 (enp2s0f0np0 + enp2s0f1np1) | 48 | 10.8.48.10 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
-| vPro/AMT | 16 | 10.8.16.90 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management |
+| vPro/AMT | 16 | 10.8.16.190 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management (Intel vPro) |
 
 #### pve-ms01-02
 | Interface | VLAN | IP Address | Subnet | Gateway | Purpose |
@@ -252,7 +261,7 @@ This document provides a comprehensive reference for all hardware nodes, network
 | enp87s0 | 16 | 10.8.16.11 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
 | enp88s0 | 1 | 10.0.1.x (DHCP) | 10.0.1.0/24 | 10.0.1.1 | Optional secondary interface |
 | bond0 (enp2s0f0np0 + enp2s0f1np1) | 48 | 10.8.48.11 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
-| vPro/AMT | 16 | 10.8.16.91 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management |
+| vPro/AMT | 16 | 10.8.16.191 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management (Intel vPro) |
 
 #### pve-aimax-01
 | Interface | VLAN | IP Address | Subnet | Gateway | Purpose |
@@ -260,7 +269,7 @@ This document provides a comprehensive reference for all hardware nodes, network
 | eno1 | 16 | 10.8.16.12 | 10.8.16.0/24 | 10.8.16.1 | Proxmox Management |
 | eno1 | 1 | 10.0.1.x (DHCP) | 10.0.1.0/24 | 10.0.1.1 | Optional secondary interface |
 | bond0 (enp1s0f0 + enp1s0f1) | 48 | 10.8.48.12 | 10.8.48.0/24 | 10.8.48.1 | Ceph Storage Network (MTU 9000) |
-| JetKVM | 16 | 10.8.16.92 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management (KVM-over-IP) |
+| JetKVM | 16 | 10.8.16.92 | 10.8.16.0/24 | 10.8.16.1 | Out-of-band Management (JetKVM) |
 
 ---
 

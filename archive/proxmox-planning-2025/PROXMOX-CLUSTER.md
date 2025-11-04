@@ -3,10 +3,11 @@
 ## Overview
 This document outlines the architecture, configuration, and operational procedures for the Proxmox VE high-availability cluster.
 
-> **Note:** This documentation uses the 10.8.x IP scheme (reused from previous K8s deployment). For complete IP address mappings and migration details, see [IP-MIGRATION-GUIDE.md](./IP-MIGRATION-GUIDE.md).
-> - **Proxmox Management:** VLAN 16 (10.8.16.0/24)
-> - **Ceph Storage:** VLAN 48 (10.8.48.0/24, MTU 9000)
-> - **Talos VMs:** VLAN 16 (10.8.16.20-22)
+> **Note:** This documentation uses a **simplified 4-VLAN design** for optimal balance of security and simplicity. For complete network details, see [NETWORK.md](./NETWORK.md) and [IP-MIGRATION-GUIDE.md](./IP-MIGRATION-GUIDE.md).
+> - **VLAN 1:** Infrastructure (10.0.1.0/24)
+> - **VLAN 16:** Management - Proxmox + Talos (10.8.16.0/24)
+> - **VLAN 28:** Workloads - Pods + LoadBalancer (10.8.28.0/22)
+> - **VLAN 48:** Storage - Ceph (10.8.48.0/24, MTU 9000)
 
 ---
 
@@ -119,11 +120,11 @@ The cluster will use **Ceph** for distributed block storage, providing:
 
 #### Ceph Network Configuration
 ```
-Public Network (Cluster): VLAN 20 - 10.20.20.0/24
-Cluster Network (Storage): VLAN 30 - 10.30.30.0/24 (10G bonded, MTU 9000)
+Public Network (Client): VLAN 16 - 10.8.16.0/24 (Management)
+Cluster Network (Storage): VLAN 48 - 10.8.48.0/24 (10G bonded, MTU 9000)
 ```
 
-**Recommendation:** Separate public (client) and cluster (replication) networks for optimal performance.
+**Recommendation:** Separate public (client) and cluster (replication) networks for optimal performance. We use VLAN 16 for client access and VLAN 48 for Ceph internal traffic.
 
 ---
 
@@ -193,9 +194,9 @@ Each node will also have local storage for:
 
 | VM Name | VM ID | Host | vCPUs | RAM | Disk | Network | HA |
 |---------|-------|------|-------|-----|------|---------|-----|
-| talos-k8s-01 | 101 | pve-ms01-01 | 8 | 16GB | 100GB (Ceph) | 3x VirtIO (VLANs 40,48,58) | No* |
-| talos-k8s-02 | 102 | pve-ms01-02 | 8 | 16GB | 100GB (Ceph) | 3x VirtIO (VLANs 40,48,58) | No* |
-| talos-k8s-03 | 103 | pve-aimax-01 | 8 | 16GB | 100GB (Ceph) | 3x VirtIO (VLANs 40,48,58) | No* |
+| talos-k8s-01 | 101 | pve-ms01-01 | 8 | 16GB | 100GB (Ceph) | 2x VirtIO (VLANs 16,28) | No* |
+| talos-k8s-02 | 102 | pve-ms01-02 | 8 | 16GB | 100GB (Ceph) | 2x VirtIO (VLANs 16,28) | No* |
+| talos-k8s-03 | 103 | pve-aimax-01 | 8 | 16GB | 100GB (Ceph) | 2x VirtIO (VLANs 16,28) | No* |
 
 **\*Note:** Proxmox HA is typically disabled for Kubernetes nodes since K8s handles its own HA at the application layer. However, you could enable it for automatic VM restart on node failure.
 
@@ -205,10 +206,13 @@ Each node will also have local storage for:
 - If one Proxmox host fails, Kubernetes reschedules pods to surviving nodes
 - etcd quorum maintained with 3 control plane nodes
 
-**Network Configuration:**
-- **eth0 (VLAN 40):** Talos API / kubectl access (10.40.40.10-12)
-- **eth1 (VLAN 48):** Pod network, CNI binding (10.48.1.0/24, 10.48.2.0/24, 10.48.3.0/24)
-- **eth2 (VLAN 58):** MetalLB LoadBalancer IPs (10.58.0.10-12)
+**Network Configuration (Simplified):**
+- **eth0 (VLAN 16):** Talos API / kubectl access (10.8.16.20-22)
+- **eth1 (VLAN 28):** Pod network + MetalLB LoadBalancer (10.8.28.0/22)
+  - Node 1 pods: 10.8.28.0/24
+  - Node 2 pods: 10.8.29.0/24
+  - Node 3 pods: 10.8.30.0/24
+  - LoadBalancer pool: 10.8.31.10-200
 
 **Resource Justification:**
 - **8 vCPUs:** Sufficient for control plane (2-4 vCPUs) + worker workloads (4-6 vCPUs)
