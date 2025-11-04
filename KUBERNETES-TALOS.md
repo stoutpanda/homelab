@@ -3,11 +3,11 @@
 ## Overview
 This document describes the Kubernetes cluster running on Talos Linux VMs within the Proxmox homelab. This setup combines the benefits of Proxmox virtualization with Talos OS's immutable, API-managed Kubernetes platform.
 
-> **Note:** This documentation uses the 10.8.x IP scheme (reused from previous K8s deployment). For complete IP address mappings, Talos configs, and CNI examples updated with correct IPs, see [IP-MIGRATION-GUIDE.md](./IP-MIGRATION-GUIDE.md).
-> - **Talos Management:** 10.8.16.20-22 (VLAN 16)
-> - **Pod Network:** 10.8.28.0/23 (VLAN 28, per-node /24 subnets)
-> - **LoadBalancer Pool:** 10.8.58.10-30 (VLAN 58)
-> - **Control Plane VIP (optional):** 10.8.18.2 (VLAN 18)
+> **Current Network Design (Simplified 4-VLAN Architecture):**
+> - **Talos Management:** 10.8.16.20-22 (VLAN 16 - management interfaces)
+> - **Pod Network:** 10.8.28.0/24 (VLAN 28, per-node /26 subnets)
+> - **LoadBalancer Pool:** 10.8.28.192-253 (VLAN 28, merged with workload VLAN)
+> - **Note:** Control Plane VIP removed - use direct endpoint (10.8.16.20:6443)
 
 ---
 
@@ -35,20 +35,21 @@ This document describes the Kubernetes cluster running on Talos Linux VMs within
 ## Node Configuration
 
 ### Node Summary
-| Node | Proxmox Host | eth0 (Mgmt) | eth1 (Pods) | eth2 (LB) | Pod Subnet |
-|------|--------------|-------------|-------------|-----------|------------|
-| talos-k8s-01 | pve-ms01-01 | 10.40.40.10 | 10.48.1.1 | 10.58.0.10 | 10.48.1.0/24 |
-| talos-k8s-02 | pve-ms01-02 | 10.40.40.11 | 10.48.2.1 | 10.58.0.11 | 10.48.2.0/24 |
-| talos-k8s-03 | pve-aimax-01 | 10.40.40.12 | 10.48.3.1 | 10.58.0.12 | 10.48.3.0/24 |
+| Node | Proxmox Host | eth0 (Mgmt) | eth1 (Pods + LB) | Pod Subnet | VM ID |
+|------|--------------|-------------|------------------|------------|-------|
+| talos-k8s-01 | pve-ms01-01 | 10.8.16.20 | 10.8.28.1 | 10.8.28.0/26 | 101 |
+| talos-k8s-02 | pve-ms01-02 | 10.8.16.21 | 10.8.28.65 | 10.8.28.64/26 | 102 |
+| talos-k8s-03 | pve-aimax-01 | 10.8.16.22 | 10.8.28.129 | 10.8.28.128/26 | 103 |
+
+**LoadBalancer Pool:** 10.8.28.192-253 (shared across all nodes on VLAN 28)
 
 ### Network Interfaces (Per Node)
 ```
 ┌────────────────────────────────────────┐
 │      Talos VM (q35, UEFI)              │
 │                                        │
-│  eth0 (VirtIO) ────► VLAN 40          │  Talos API / kubectl
-│  eth1 (VirtIO) ────► VLAN 48          │  Pod network (CNI)
-│  eth2 (VirtIO) ────► VLAN 58          │  LoadBalancer IPs
+│  eth0 (VirtIO) ────► VLAN 16          │  Talos API / kubectl / K8s API
+│  eth1 (VirtIO) ────► VLAN 28          │  Pod network + LoadBalancer
 │                                        │
 └────────────────────────────────────────┘
          │ Proxmox vmbr0 (VLAN trunk)
@@ -66,32 +67,32 @@ Talos OS is installed from ISO or cloud image with machine configuration applied
 #### Prerequisites
 - Talos ISO downloaded (latest stable from https://talos.dev)
 - `talosctl` installed on admin machine
-- Network access to all three VMs on VLAN 40
+- Network access to all three VMs on VLAN 16 (10.8.16.20-22)
 
 #### Bootstrap Process
 ```bash
 # 1. Generate cluster configuration
-talosctl gen config homelab-k8s https://10.40.40.10:6443 \
+talosctl gen config homelab-k8s https://10.8.16.20:6443 \
   --output-dir ./talos-config
 
 # 2. Apply configuration to each node
 talosctl apply-config --insecure \
-  --nodes 10.40.40.10 \
+  --nodes 10.8.16.20 \
   --file ./talos-config/controlplane.yaml
 
 talosctl apply-config --insecure \
-  --nodes 10.40.40.11 \
+  --nodes 10.8.16.21 \
   --file ./talos-config/controlplane.yaml
 
 talosctl apply-config --insecure \
-  --nodes 10.40.40.12 \
+  --nodes 10.8.16.22 \
   --file ./talos-config/controlplane.yaml
 
 # 3. Bootstrap etcd on first node
-talosctl bootstrap --nodes 10.40.40.10
+talosctl bootstrap --nodes 10.8.16.20
 
 # 4. Retrieve kubeconfig
-talosctl kubeconfig --nodes 10.40.40.10
+talosctl kubeconfig --nodes 10.8.16.20
 ```
 
 ### Talos Machine Configuration
@@ -106,25 +107,18 @@ machine:
     interfaces:
       - interface: eth0
         addresses:
-          - 10.40.40.10/23
+          - 10.8.16.20/24
         routes:
           - network: 0.0.0.0/0
-            gateway: 10.40.40.1
+            gateway: 10.8.16.1
         vlan:
-          vlanId: 40
+          vlanId: 16
 
       - interface: eth1
         addresses:
-          - 10.48.1.1/24
+          - 10.8.28.1/24
         vlan:
-          vlanId: 48
-        mtu: 1500
-
-      - interface: eth2
-        addresses:
-          - 10.58.0.10/24
-        vlan:
-          vlanId: 58
+          vlanId: 28
         mtu: 1500
 
     nameservers:
@@ -132,29 +126,33 @@ machine:
       - 1.1.1.1
 ```
 
+**Note:** For other nodes, adjust IPs accordingly:
+- **talos-k8s-02:** eth0=10.8.16.21, eth1=10.8.28.65
+- **talos-k8s-03:** eth0=10.8.16.22, eth1=10.8.28.129
+
 #### Kubernetes Configuration
 ```yaml
 cluster:
   clusterName: homelab-k8s
   controlPlane:
-    endpoint: https://10.40.40.10:6443
+    endpoint: https://10.8.16.20:6443
 
   network:
     cni:
       name: none  # Cilium installed separately
 
     podSubnets:
-      - 10.48.0.0/16  # VLAN-backed pod network
+      - 10.8.28.0/24  # VLAN-backed pod network (subdivided into /26 per node)
 
     serviceSubnets:
       - 10.244.0.0/16  # Internal service network
 
   apiServer:
     certSANs:
-      - 10.40.40.10
-      - 10.40.40.11
-      - 10.40.40.12
-      - 10.58.0.101  # Optional: MetalLB VIP for API
+      - 10.8.16.20
+      - 10.8.16.21
+      - 10.8.16.22
+      - k8s-api.lab.local
 ```
 
 ---
@@ -182,7 +180,7 @@ cilium install \
   --set ipam.mode=kubernetes \
   --set tunnel=disabled \
   --set enableIPv4Masquerade=false \
-  --set nativeRoutingCIDR=10.48.0.0/16 \
+  --set nativeRoutingCIDR=10.8.28.0/24 \
   --set nodePort.enabled=true \
   --set nodePort.mode=dsr \
   --set kubeProxyReplacement=true
@@ -197,15 +195,16 @@ cilium connectivity test  # Optional: runs connectivity tests
 ### Cilium Configuration Details
 
 **Key Settings:**
-- `ipam.mode=kubernetes`: Use Kubernetes native IPAM (per-node /24 subnets)
+- `ipam.mode=kubernetes`: Use Kubernetes native IPAM (per-node /26 subnets)
 - `tunnel=disabled`: No VXLAN/Geneve overlay, direct routing
 - `enableIPv4Masquerade=false`: No NAT, pods use routable IPs
-- `nativeRoutingCIDR=10.48.0.0/16`: Pod CIDR for direct routing
+- `nativeRoutingCIDR=10.8.28.0/24`: Pod CIDR for direct routing
 - `kubeProxyReplacement=true`: eBPF replaces kube-proxy
 
 **Routing:**
-- Each Talos node advertises its /24 pod subnet via kernel routing
-- UDM-Pro routes traffic between VLANs (40, 48, 58)
+- Each Talos node advertises its /26 pod subnet via kernel routing
+- Routes configured on UDM-Pro for pod subnet reachability
+- UDM-Pro routes traffic between VLANs (1, 16, 28, 48)
 - No overlay encapsulation = lower latency, higher throughput
 
 ---
@@ -216,7 +215,7 @@ cilium connectivity test  # Optional: runs connectivity tests
 - **Native LoadBalancer:** Provides LoadBalancer service type
 - **Layer 2 mode:** Simple ARP-based IP announcement
 - **Homelab-friendly:** No BGP router required
-- **Dedicated VLAN:** Clean separation via VLAN 58
+- **Shared VLAN:** LoadBalancer IPs on VLAN 28 (same as pods)
 
 ### MetalLB Installation
 
@@ -234,7 +233,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 10.58.0.100-10.58.0.200
+  - 10.8.28.192-10.8.28.253  # 62 IPs for LoadBalancer services
 ```
 
 #### Configure L2 Advertisement
@@ -248,7 +247,7 @@ spec:
   ipAddressPools:
   - homelab-pool
   interfaces:
-  - eth2  # Bind to VLAN 58 interface
+  - eth1  # Bind to VLAN 28 interface (pods + LoadBalancer)
 ```
 
 #### Apply Configuration
@@ -259,9 +258,9 @@ kubectl apply -f metallb-l2advert.yaml
 
 ### MetalLB Behavior
 - MetalLB speaker pods run on each Talos node
-- When a LoadBalancer service is created, MetalLB assigns an IP from the pool
-- The speaker on the "winner" node announces the IP via ARP on VLAN 58
-- Traffic to that IP is routed directly to the node, then to pods
+- When a LoadBalancer service is created, MetalLB assigns an IP from the pool (10.8.28.192-253)
+- The speaker on the "winner" node announces the IP via ARP on VLAN 28
+- Traffic to that IP is routed directly to the node via eth1, then to pods
 
 ---
 
@@ -285,15 +284,15 @@ helm install traefik traefik/traefik \
   --create-namespace \
   --set service.type=LoadBalancer \
   --set service.annotations."metallb\.universe\.tf/address-pool"=homelab-pool \
-  --set service.spec.loadBalancerIP=10.58.0.100
+  --set service.spec.loadBalancerIP=10.8.28.192
 ```
 
 #### Verify Traefik
 ```bash
 kubectl get svc -n traefik
-# Should show LoadBalancer with EXTERNAL-IP: 10.58.0.100
+# Should show LoadBalancer with EXTERNAL-IP: 10.8.28.192
 
-curl -v http://10.58.0.100
+curl -v http://10.8.28.192
 # Should return 404 (Traefik is running, no routes yet)
 ```
 
@@ -407,9 +406,9 @@ volumeBindingMode: Immediate
 #### Using talosctl
 ```bash
 export TALOSCONFIG=~/.talos/config
-talosctl --nodes 10.40.40.10 dashboard  # Node dashboard
-talosctl --nodes 10.40.40.10 logs kubelet  # View kubelet logs
-talosctl --nodes 10.40.40.10 dmesg  # Kernel logs
+talosctl --nodes 10.8.16.20 dashboard  # Node dashboard
+talosctl --nodes 10.8.16.20 logs kubelet  # View kubelet logs
+talosctl --nodes 10.8.16.20 dmesg  # Kernel logs
 ```
 
 #### Using kubectl
@@ -423,7 +422,7 @@ kubectl get pods -A  # List all pods
 
 ```bash
 # Upgrade one node at a time
-talosctl upgrade --nodes 10.40.40.10 \
+talosctl upgrade --nodes 10.8.16.20 \
   --image ghcr.io/siderolabs/installer:v1.8.3
 
 # Wait for node to come back
@@ -435,19 +434,19 @@ kubectl wait --for=condition=Ready node/talos-k8s-01 --timeout=10m
 ### Upgrade Kubernetes
 
 ```bash
-talosctl upgrade-k8s --nodes 10.40.40.10 --to 1.31.1
+talosctl upgrade-k8s --nodes 10.8.16.20 --to 1.31.1
 ```
 
 ### Backup etcd
 
 ```bash
-talosctl --nodes 10.40.40.10 etcd snapshot /tmp/etcd-backup.db
+talosctl --nodes 10.8.16.20 etcd snapshot /tmp/etcd-backup.db
 ```
 
 ### Reset Node (Reinstall)
 
 ```bash
-talosctl reset --nodes 10.40.40.10 --graceful
+talosctl reset --nodes 10.8.16.20 --graceful
 # Then reapply machine config
 ```
 
@@ -466,7 +465,7 @@ helm install kube-prometheus prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --create-namespace \
   --set grafana.service.type=LoadBalancer \
-  --set grafana.service.loadBalancerIP=10.58.0.110
+  --set grafana.service.loadBalancerIP=10.8.28.194
 ```
 
 #### Access Grafana
@@ -475,7 +474,7 @@ helm install kube-prometheus prometheus-community/kube-prometheus-stack \
 kubectl get secret -n monitoring kube-prometheus-grafana \
   -o jsonpath="{.data.admin-password}" | base64 -d
 
-# Access at http://10.58.0.110
+# Access at http://10.8.28.194
 ```
 
 ### Hubble (Cilium Observability)
@@ -495,13 +494,13 @@ kubectl port-forward -n kube-system svc/hubble-ui 8080:80
 
 ```bash
 # Check Talos logs
-talosctl --nodes 10.40.40.10 logs controller-runtime
+talosctl --nodes 10.8.16.20 logs controller-runtime
 
 # Check kubelet status
-talosctl --nodes 10.40.40.10 service kubelet status
+talosctl --nodes 10.8.16.20 service kubelet status
 
 # Check pod network
-kubectl run test-pod --image=busybox --rm -it -- ping 10.48.2.5
+kubectl run test-pod --image=busybox --rm -it -- ping 10.8.28.70
 ```
 
 ### Pod Network Issues
@@ -555,8 +554,8 @@ kubectl port-forward -n traefik svc/traefik 9000:9000
 - **Immutable:** Embrace the immutable nature, don't try to SSH in
 
 ### Networking
-- **Test VLAN routing:** Ensure UDM-Pro routes between VLANs 40, 48, 58
-- **MTU considerations:** Keep MTU at 1500 unless testing jumbo frames
+- **Test VLAN routing:** Ensure UDM-Pro routes between VLANs 1, 16, 28, 48
+- **MTU considerations:** Keep MTU at 1500 (9000 for VLAN 48 storage only)
 - **Firewall rules:** Allow necessary ports between VLANs
 
 ### Storage
@@ -577,16 +576,16 @@ kubectl port-forward -n traefik svc/traefik 9000:9000
 ### Talos
 ```bash
 # Get node info
-talosctl --nodes 10.40.40.10 get members
+talosctl --nodes 10.8.16.20 get members
 
 # Restart service
-talosctl --nodes 10.40.40.10 service kubelet restart
+talosctl --nodes 10.8.16.20 service kubelet restart
 
 # Check etcd health
-talosctl --nodes 10.40.40.10 etcd members
+talosctl --nodes 10.8.16.20 etcd members
 
 # Interactive dashboard
-talosctl --nodes 10.40.40.10 dashboard
+talosctl --nodes 10.8.16.20 dashboard
 ```
 
 ### Kubernetes

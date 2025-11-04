@@ -35,7 +35,7 @@ The network uses a **simplified 4-VLAN architecture** that balances security wit
 - **Simplified Management:** Fewer VLANs to maintain vs. original 7-VLAN plan
 - **Performance:** Dedicated 10GbE storage network with MTU 9000
 - **Security:** Proper isolation between management, workload, and storage traffic
-- **Scalability:** Room for 1024 pod IPs + 190 LoadBalancer IPs in VLAN 28
+- **Scalability:** Room for 186 pod IPs + 62 LoadBalancer IPs in VLAN 28 (/26 subdivisions)
 
 ---
 
@@ -47,7 +47,7 @@ The network uses a **simplified 4-VLAN architecture** that balances security wit
 |---------|------|--------|---------|---------|-----|-------|
 | **1** | Infrastructure | 10.0.1.0/24 | 10.0.1.1 | Network devices | 1500 | Switches, APs, UDM-Pro |
 | **16** | Management | 10.8.16.0/24 | 10.8.16.1 | Proxmox + Talos | 1500 | Web UI, SSH, APIs, OOB mgmt |
-| **28** | Workloads | 10.8.28.0/22 | 10.8.28.1 | Pods + LoadBalancer | 1500 | 1024 IPs total |
+| **28** | Workloads | 10.8.28.0/24 | 10.8.28.1 | Pods + LoadBalancer | 1500 | 254 IPs, /26 subdivisions |
 | **48** | Storage | 10.8.48.0/24 | N/A (isolated) | Ceph cluster | 9000 | Jumbo frames, no routing |
 
 ### Removed VLANs (Simplified Design)
@@ -131,45 +131,44 @@ These VLANs were removed from the original plan for simplicity:
 
 ---
 
-### VLAN 28 - Workload Network (10.8.28.0/22)
+### VLAN 28 - Workload Network (10.8.28.0/24)
 
 **Purpose:** VLAN-backed Kubernetes pod networking and MetalLB LoadBalancer IPs
 
 #### Key Features
-- **Subnet Size:** /22 provides 1024 usable IPs
-- **Per-Node Allocation:** Each Talos node gets a /24 subnet for its pods
-- **LoadBalancer Pool:** 190 IPs for MetalLB (10.8.31.10-200)
+- **Subnet Size:** /24 provides 254 usable IPs
+- **Per-Node Allocation:** Each Talos node gets a /26 subnet (62 IPs) for its pods
+- **LoadBalancer Pool:** 62 IPs for MetalLB (10.8.28.192-253)
 - **CNI:** Cilium in native routing mode (no overlay)
 - **Routing:** Direct routing via UDM-Pro between VLAN 28 and other VLANs
 
 #### Subnet Breakdown
 
-| Range | Node/Purpose | IPs Available | Notes |
-|-------|--------------|---------------|-------|
-| 10.8.28.0/24 | talos-k8s-01 pods | 254 | Node 1 pod subnet |
-| 10.8.29.0/24 | talos-k8s-02 pods | 254 | Node 2 pod subnet |
-| 10.8.30.0/24 | talos-k8s-03 pods | 254 | Node 3 pod subnet |
-| 10.8.31.1-9 | Reserved | 9 | Reserved for future use |
-| **10.8.31.10-200** | **MetalLB Pool** | **190** | **LoadBalancer IPs** |
-| 10.8.31.201-254 | Reserved | 54 | Reserved for expansion |
+| Range | Node/Purpose | IPs Available | CIDR | Notes |
+|-------|--------------|---------------|------|-------|
+| 10.8.28.0-63 | talos-k8s-01 pods | 62 | 10.8.28.0/26 | Node 1 pod subnet |
+| 10.8.28.64-127 | talos-k8s-02 pods | 62 | 10.8.28.64/26 | Node 2 pod subnet |
+| 10.8.28.128-191 | talos-k8s-03 pods | 62 | 10.8.28.128/26 | Node 3 pod subnet |
+| **10.8.28.192-253** | **MetalLB Pool** | **62** | **10.8.28.192/26** | **LoadBalancer IPs** |
+| 10.8.28.254 | Reserved | 1 | - | Broadcast/Reserved |
 
 #### Talos VM Workload Interfaces
 
 | Node | Interface | IP Address | Pod Subnet | Purpose |
 |------|-----------|------------|------------|---------|
-| talos-k8s-01 | eth1 | 10.8.28.1 | 10.8.28.0/24 | CNI + MetalLB binding |
-| talos-k8s-02 | eth1 | 10.8.29.1 | 10.8.29.0/24 | CNI + MetalLB binding |
-| talos-k8s-03 | eth1 | 10.8.30.1 | 10.8.30.0/24 | CNI + MetalLB binding |
+| talos-k8s-01 | eth1 | 10.8.28.1 | 10.8.28.0/26 | CNI + MetalLB binding |
+| talos-k8s-02 | eth1 | 10.8.28.65 | 10.8.28.64/26 | CNI + MetalLB binding |
+| talos-k8s-03 | eth1 | 10.8.28.129 | 10.8.28.128/26 | CNI + MetalLB binding |
 
 #### MetalLB LoadBalancer Assignments (Planned)
 
 | Service | IP Address | Port(s) | Purpose |
 |---------|------------|---------|---------|
-| Traefik Ingress | 10.8.31.10 | 80, 443 | Main HTTP/HTTPS ingress |
-| Kubernetes Dashboard | 10.8.31.11 | 443 | K8s web UI |
-| Grafana | 10.8.31.12 | 80, 443 | Monitoring dashboard |
-| Prometheus | 10.8.31.13 | 9090 | Metrics collection |
-| _Available Pool_ | 10.8.31.14-200 | - | 187 IPs for services |
+| Traefik Ingress | 10.8.28.192 | 80, 443 | Main HTTP/HTTPS ingress |
+| Kubernetes Dashboard | 10.8.28.193 | 443 | K8s web UI |
+| Grafana | 10.8.28.194 | 80, 443 | Monitoring dashboard |
+| Prometheus | 10.8.28.195 | 9090 | Metrics collection |
+| _Available Pool_ | 10.8.28.196-253 | - | 58 IPs for services |
 
 ---
 
@@ -245,23 +244,23 @@ These VLANs were removed from the original plan for simplicity:
 | eth0 | VirtIO | 16 | 10.8.16.20 | 10.8.16.0/24 | Talos API, kubectl, K8s API endpoint |
 | eth1 | VirtIO | 28 | 10.8.28.1 | 10.8.28.0/24 | Pod subnet + MetalLB binding |
 
-**Pod Subnet:** 10.8.28.0/24 (254 pods)
+**Pod Subnet:** 10.8.28.0/26 (62 pods)
 
 ##### talos-k8s-02 (VM ID 102, on pve-ms01-02)
 | Interface | Type | VLAN | IP Address | Subnet | Purpose |
 |-----------|------|------|------------|--------|---------|
 | eth0 | VirtIO | 16 | 10.8.16.21 | 10.8.16.0/24 | Talos API, kubectl |
-| eth1 | VirtIO | 28 | 10.8.29.1 | 10.8.29.0/24 | Pod subnet + MetalLB binding |
+| eth1 | VirtIO | 28 | 10.8.28.65 | 10.8.28.0/24 | Pod subnet + MetalLB binding |
 
-**Pod Subnet:** 10.8.29.0/24 (254 pods)
+**Pod Subnet:** 10.8.28.64/26 (62 pods)
 
 ##### talos-k8s-03 (VM ID 103, on pve-aimax-01)
 | Interface | Type | VLAN | IP Address | Subnet | Purpose |
 |-----------|------|------|------------|--------|---------|
 | eth0 | VirtIO | 16 | 10.8.16.22 | 10.8.16.0/24 | Talos API, kubectl |
-| eth1 | VirtIO | 28 | 10.8.30.1 | 10.8.30.0/24 | Pod subnet + MetalLB binding |
+| eth1 | VirtIO | 28 | 10.8.28.129 | 10.8.28.0/24 | Pod subnet + MetalLB binding |
 
-**Pod Subnet:** 10.8.30.0/24 (254 pods)
+**Pod Subnet:** 10.8.28.128/26 (62 pods)
 
 ---
 
@@ -408,11 +407,11 @@ graph TB
 
     subgraph "VLAN 28 - Workloads"
         UDM28[Gateway<br/>10.8.28.1]
-        POD1[Node 1 Pods<br/>10.8.28.0/24]
-        POD2[Node 2 Pods<br/>10.8.29.0/24]
-        POD3[Node 3 Pods<br/>10.8.30.0/24]
-        MetalLB[MetalLB Pool<br/>10.8.31.10-200]
-        Ingress[Traefik<br/>10.8.31.10]
+        POD1[Node 1 Pods<br/>10.8.28.0/26]
+        POD2[Node 2 Pods<br/>10.8.28.64/26]
+        POD3[Node 3 Pods<br/>10.8.28.128/26]
+        MetalLB[MetalLB Pool<br/>10.8.28.192-253]
+        Ingress[Traefik<br/>10.8.28.192]
     end
 
     subgraph "VLAN 48 - Storage"
@@ -541,25 +540,25 @@ Logging: Disabled (high-volume traffic)
 
 **DENY Rules (Security):**
 ```
-1. DENY: 10.8.28.0/22 → 10.8.16.10-12:8006
+1. DENY: 10.8.28.0/24 → 10.8.16.10-12:8006
    Purpose: Block pod access to Proxmox web UI
 
-2. DENY: 10.8.28.0/22 → 10.8.16.10-12:22
+2. DENY: 10.8.28.0/24 → 10.8.16.10-12:22
    Purpose: Block pod SSH to Proxmox hosts
 
-3. DENY: 10.8.28.0/22 → 10.8.16.92
+3. DENY: 10.8.28.0/24 → 10.8.16.92
    Purpose: Block pod access to JetKVM
 
-4. DENY: 10.8.28.0/22 → 10.8.16.190-191
+4. DENY: 10.8.28.0/24 → 10.8.16.190-191
    Purpose: Block pod access to vPro/AMT interfaces
 ```
 
 **ALLOW Rules (Required):**
 ```
-5. ALLOW: 10.8.28.0/22 → 10.8.16.20-22:50000
+5. ALLOW: 10.8.28.0/24 → 10.8.16.20-22:50000
    Purpose: Pods can reach Talos API
 
-6. ALLOW: 10.8.28.0/22 → 10.8.16.20-22:6443
+6. ALLOW: 10.8.28.0/24 → 10.8.16.20-22:6443
    Purpose: Pods can reach Kubernetes API
 
 7. ALLOW: All other traffic
@@ -594,12 +593,12 @@ If UDM-Pro doesn't automatically learn pod subnets, add these static routes:
 
 ```
 # Pod network routing via Talos VM management IPs
-10.8.28.0/24 via 10.8.16.20  (talos-k8s-01 pods)
-10.8.29.0/24 via 10.8.16.21  (talos-k8s-02 pods)
-10.8.30.0/24 via 10.8.16.22  (talos-k8s-03 pods)
+10.8.28.0/26 via 10.8.16.20  (talos-k8s-01 pods)
+10.8.28.64/26 via 10.8.16.21  (talos-k8s-02 pods)
+10.8.28.128/26 via 10.8.16.22  (talos-k8s-03 pods)
 
 # LoadBalancer pool (MetalLB uses L2, may not need static route)
-10.8.31.0/24 via 10.8.16.20  (announced via L2 by MetalLB)
+10.8.28.192/26 via 10.8.16.20  (announced via L2 by MetalLB)
 ```
 
 **Note:** MetalLB uses L2 advertisement, so UDM-Pro may learn routes via ARP automatically.
@@ -619,8 +618,8 @@ If UDM-Pro doesn't automatically learn pod subnets, add these static routes:
 | **vPro (Node 2)** | https://10.8.16.191:16992 | 16992 | admin / configured |
 | **JetKVM (Node 3)** | https://10.8.16.92 | 443 | admin / TBD |
 | **Kubernetes API** | https://10.8.16.20:6443 | 6443 | kubeconfig |
-| **Traefik Dashboard** | http://10.8.31.10:9000/dashboard/ | 9000 | N/A |
-| **Grafana** | http://10.8.31.12 | 80 | admin / configured |
+| **Traefik Dashboard** | http://10.8.28.192:9000/dashboard/ | 9000 | N/A |
+| **Grafana** | http://10.8.28.194 | 80 | admin / configured |
 
 ---
 
@@ -771,8 +770,8 @@ talos-k8s-03.lab.local      A    10.8.16.22
 k8s-api.lab.local           A    10.8.16.20
 
 # Services
-traefik.lab.local           A    10.8.31.10
-grafana.lab.local           A    10.8.31.12
+traefik.lab.local           A    10.8.28.192
+grafana.lab.local           A    10.8.28.194
 ```
 
 ---
@@ -827,8 +826,8 @@ grafana.lab.local           A    10.8.31.12
 
 ---
 
-**Last Updated:** 2025-11-04
-**Document Version:** 1.0
+**Last Updated:** 2025-01-04
+**Document Version:** 2.0
 **Maintained By:** Jason
 
 **Related Documentation:**

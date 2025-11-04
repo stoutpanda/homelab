@@ -16,7 +16,7 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
 - **Proxmox:** 3-node HA cluster with quorum-based failover
 - **Kubernetes:** 3 Talos VMs (mixed control plane + worker on each host)
 - **Storage:** Ceph for VMs + Kubernetes persistent volumes
-- **Networking:** 7 VLANs for management, storage, VMs, pods, and services
+- **Networking:** 4 VLANs for infrastructure, management, workloads, and storage
 
 ### Key Features
 - **High Availability:** Automatic VM and pod failover on node failure
@@ -60,7 +60,7 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
          └───────────┬────────┘    └────┬────────────────┘
                      │                  │
          ┌───────────┴────────┐         │ 10GbE SFP+ (LACP Bond)
-         │ USW-Enterprise-8   │         │ VLAN 30, MTU 9000
+         │ USW-Enterprise-8   │         │ VLAN 48, MTU 9000
          │   PoE Server       │         │
          │   (10.0.1.238)     │         │
          └───┬──────┬─────┬───┘         │
@@ -85,13 +85,13 @@ A high-availability Proxmox VE cluster running on enterprise-class mini PCs, fea
 |------|--------|---------|-----|-------|
 | 1 | 10.0.1.0/24 | Infrastructure | 1500 | Switches, gateway |
 | **16** | **10.8.16.0/24** | **Management** | **1500** | **Proxmox + Talos VMs** |
-| **28** | **10.8.28.0/22** | **Workloads** | **1500** | **Pods + LoadBalancer (1024 IPs)** |
+| **28** | **10.8.28.0/24** | **Workloads** | **1500** | **Pods + LoadBalancer (254 IPs, /26 subdivisions)** |
 | **48** | **10.8.48.0/24** | **Storage** | **9000** | **Ceph cluster traffic** |
 
 **Key Simplifications:**
 - ✅ **Removed VLAN 18:** No separate VIP VLAN (use direct endpoint)
 - ✅ **Removed VLAN 58:** LoadBalancer IPs merged into VLAN 28
-- ✅ **Expanded VLAN 28:** From /23 to /22 (512 → 1024 IPs)
+- ✅ **VLAN 28 Pattern Match:** Subnet matches VLAN number (10.8.28.0/24)
 - ✅ **2 interfaces per VM:** Down from 3 (simpler configuration)
 
 See [NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md) for complete network details.
@@ -108,9 +108,9 @@ See [NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md) for complete network details.
 
 ### Networking
 - **CNI:** Cilium with native routing (no overlay encapsulation)
-- **Pod Network:** VLAN 28 (10.8.28.0/22) with per-node /24 subnets
-- **LoadBalancer:** MetalLB L2 mode on VLAN 28 (10.8.31.10-200, 190 IPs)
-- **Ingress:** Traefik on MetalLB LoadBalancer (10.8.31.10)
+- **Pod Network:** VLAN 28 (10.8.28.0/24) with per-node /26 subnets
+- **LoadBalancer:** MetalLB L2 mode on VLAN 28 (10.8.28.192-253, 62 IPs)
+- **Ingress:** Traefik on MetalLB LoadBalancer (10.8.28.192)
 - **Management:** VLAN 16 (10.8.16.20-22 for Talos VMs)
 
 ### Storage
@@ -121,7 +121,7 @@ See [NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md) for complete network details.
 ### Service Exposure
 | Service Type | Method | IP Range | Example |
 |--------------|--------|----------|---------|
-| LoadBalancer | MetalLB | 10.8.31.10-200 | Traefik: 10.8.31.10 |
+| LoadBalancer | MetalLB | 10.8.28.192-253 | Traefik: 10.8.28.192 |
 | Ingress | Traefik | Via LoadBalancer IP | http://app.example.com |
 | NodePort | Direct to node | 10.8.16.20-22 | :30000-32767 |
 | K8s API | Direct | 10.8.16.20:6443 | Control plane endpoint |
@@ -166,7 +166,7 @@ See [NETWORK-REFERENCE.md](./NETWORK-REFERENCE.md) for complete hardware interfa
   - `vm-disks`: VM root disks (128 PGs)
   - `vm-data`: VM data volumes (256 PGs)
   - `backups`: VM backups with 2-way replication (64 PGs)
-- **Network:** Dedicated 10GbE storage network (VLAN 30)
+- **Network:** Dedicated 10GbE storage network (VLAN 48)
 - **Performance:** ~20 Gbps aggregate per node (bonded SFP+)
 
 ### Total Capacity
@@ -182,16 +182,16 @@ See [archive/proxmox-planning-2025/PROXMOX-CLUSTER.md](./archive/proxmox-plannin
 ## Getting Started
 
 ### Access the Cluster
-- **Proxmox Web UI:** `https://10.20.20.10:8006` (pve-ms01-01)
-- **Proxmox Web UI:** `https://10.20.20.11:8006` (pve-ms01-02)
-- **Proxmox Web UI:** `https://10.20.20.12:8006` (pve-aimax-01)
+- **Proxmox Web UI:** `https://10.8.16.10:8006` (pve-ms01-01)
+- **Proxmox Web UI:** `https://10.8.16.11:8006` (pve-ms01-02)
+- **Proxmox Web UI:** `https://10.8.16.12:8006` (pve-aimax-01)
 - **Cluster VIP (if configured):** `https://proxmox.lab.local:8006`
 
 ### SSH Access
 ```bash
-ssh root@10.20.20.10  # pve-ms01-01
-ssh root@10.20.20.11  # pve-ms01-02
-ssh root@10.20.20.12  # pve-aimax-01
+ssh root@10.8.16.10  # pve-ms01-01
+ssh root@10.8.16.11  # pve-ms01-02
+ssh root@10.8.16.12  # pve-aimax-01
 ```
 
 ### Common Operations
@@ -339,5 +339,5 @@ This is a personal homelab project. All documentation is provided as-is for educ
 ---
 
 **Project Started:** November 2025
-**Last Updated:** 2025-11-03
+**Last Updated:** 2025-01-04
 **Maintained By:** Jason

@@ -58,7 +58,7 @@ The project follows a methodical step-by-step approach:
 - [ ] Complete AMD AI Max hardware documentation
 
 ### Phase 2: Network Infrastructure
-- [ ] Create VLANs on UDM-Pro (20, 30, 40, 50)
+- [ ] Create VLANs on UDM-Pro (16, 28, 48)
 - [ ] Configure switch port profiles
 - [ ] Cable storage network (10GbE SFP+)
 - [ ] Verify network connectivity and performance

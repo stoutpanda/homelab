@@ -1,3 +1,0 @@
-This is a test file created by the filesystem demo script.
-It demonstrates the write_file capability of the MCP server.
-Created at: 2025-05-04T16:09:15.111Z
